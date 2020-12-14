@@ -1,0 +1,512 @@
+---
+title: "POH Merge Data from Multiple Herbaria Pipeline"
+author: "Kelsey Brock"
+date: "12/9/2020"
+output: html_document
+---
+The Script below performs the following for each of BISH, PTBG, US and GBIF herbarium data
+1) Merges occurrence data from each herbarium with the POH Taxon Table
+2) Perform cleanup on data (reprojecting lat lons, joining fields, etc)
+3) Renames columns according to POH data schema (DarwinCore names) and selects rows that we want
+
+4) Collates herbarium data into a single file
+5) Standardize the spelling of island names
+6) Remove horrible latlon points
+
+
+
+TO-DO list:
+1) a few coordinates in the BISH dataset need special attention
+2) convert elevation to units (they are currently in ft or m)
+3) Build a shapefile that includes the NW islands?
+
+```{r, }
+require(knitr)
+```
+```{r}
+#get the needed packages
+#get the needed packages
+if(!require("pacman")){
+	install.packages("pacman")
+	library(pacman)}
+p_load("dplyr",  "ggplot2", "taxize", "sp", "sf", "proj4", "data.table", "stringr", "flora", "DataCombine", "parzer", "stringi", "scrubr", "ids")
+```
+
+
+
+## These are the fields we ultimately want in the final data set
+These are DarwinCore column names that are currently in the POH schema
+```{r}
+Taxonfields <- c( "taxonID", "IPNIID", "parentNameUsageID", "scientificName", "scientificNameAuthorship", "namePublishedIn", "originalNameUsage", "taxonRank", "kingdom", "phylum", "class", "order", "family", "genus", "subgenus", "specificEpithet", "vernacularName", "taxonRemarks")
+
+Locationfields <- c("locationID", "higherGeographyID", "locationType", "continent", "waterbody", "islandGroup", "island", "country", "countrycode", "stateProvince", "county", "municipality", "locality", "minimumElevationInMeters", "maximumElevationInMeters", "decimalLatitude", "decimalLongitude", "geodeticDatum", "coordinateUncertaintyInMeters", "footprintWKT", "footprintSRS", "locationRemarks" )
+
+Occurrencefields <- c("occurrenceID", "locationID", "basisOfRecord", "catalogNumber", "recordNumber", "recordedBy", "individualCount", "organismQuantityProperty", "organismQuantityTypeProperty", "sex", "lifeStage", "reproductiveCondition", "behavior", "establishmentMeans", "occurrenceStatus", "preparations", "disposition", "associatedMedia", "associatedReferences", "associatedTaxa", "otherCatalogNumbers", "occurrenceRemarks", "fieldNumber", "eventDate", "eventTime", "habitat", "samplingProtocol", "fieldNotes", "watershedCount", "isCultivated", "source", "sourceIdentifier", "sourceURL")
+
+Allfields <- unique(c(Taxonfields, Locationfields, Occurrencefields ))
+```
+
+## Read in the Herbarium Data Sets
+```{r}
+#Taxon Table for merging
+POH_taxon <- read.csv("POH_TAXA_12_3_2020.csv", header=T, sep=',', stringsAsFactors=F) %>% dplyr::select(taxonID, IPNIID, scientificName, scientificNameAuthorship, kingdom,	phylum,	class,	order,	family,	genus, vernacularName, BISH_TaxonID)
+
+#Herbarium Data                                                                                                         
+BISH <- read.csv("dbo_Specimens1a.csv", header=T, sep=',', stringsAsFactors=F)
+PTBG <- read.csv("NTBG_HerbariumSearchExport_20201209.csv", header=T, sep=',', stringsAsFactors=F)
+US <- read.csv("nmnhsearch-20201210005846.csv", header=T, sep=',', stringsAsFactors=F)
+GBIF <- read.csv("occurrence.csv", header=T, sep=',', stringsAsFactors=F) %>% dplyr::rename(TaxonomicName = scientificName) %>% dplyr::select(-c(	taxonID, kingdom,	phylum,	class,	order,	family,	genus, vernacularName,))
+## subset to remove human occurrences (we'll deal with those later)
+GBIF_pres_spec <- subset(GBIF, GBIF$basisOfRecord == "PRESERVED_SPECIMEN")
+# this is the taxonomy information we'll merge with
+
+```
+###### Where to get updates of these data sets:
+BISH <- download from BISH Specimen Database, joined with Tim's taxon table to get ID number
+PTBG <- http://lawai.ntbg.org/ you need an account to login 
+US <- https://collections.nmnh.si.edu/search/botany/; Category "flowering plants and ferns",State = "Hawaii"; only downloads 10000 at a time (do multiple dowloads based on time periods)
+GBIF <- from GBIF.org "POLYGON((-161.0376 17.79054,-153.91846 17.79054,-153.91846 23.70489,-161.0376 23.70489,-161.0376 17.79054))" (main hawaiian islands); has geospatial issue = FALSE, Occurrence Status - Present, Scientific Name = Tracheopyta, darwin core archive format. comes in .zip file, download "occurrence.txt", convert to .csv in Excel.
+
+
+How many occurrence records are we combining (including duplicates?)
+```{r}
+nrow(BISH) + nrow(PTBG) + nrow(US) + nrow(GBIF_pres_spec)
+```
+
+# BISH Herbarium Data
+## 1. BISH- Merge with POH table
+
+Merging BISH database output with taxon names and ID #s
+
+How many species won't merge (ie. have no scientific name associated with a BISH_taxonID?)?
+```{r}
+temp <- merge(BISH, POH_taxon, by.x = "TaxonNameID", by.y = "BISH_TaxonID", all.x = TRUE, all.y = FALSE)
+temp <- subset(temp, is.na(temp$scientificName))
+occ <- nrow(temp)
+tax <- length(unique(temp$TaxonNameID))
+print(paste0("lost ", occ , " occurrences represented by ", tax, " BISH taxon IDs"))
+```
+```{r}
+BISH<- merge(BISH, POH_taxon, by.x = "TaxonNameID", by.y = "BISH_TaxonID", all.x = FALSE, all.y = FALSE)
+```
+
+
+## 2. BISH- Data Cleanup
+deal with messy GPS coordinate data of different types
+```{r include=FALSE}
+BISH_nocoords <- subset(BISH, is.na(BISH$LatDeg))
+BISH_coords <- subset(BISH, !is.na(BISH$LatDeg))
+BISH_declat <- subset(BISH_coords, is.na(BISH_coords$LatMin))
+BISH_minsec <- subset(BISH_coords, !is.na(BISH_coords$LatMin))
+BISH_UTMs_Northing <-  grepl.sub(data = BISH_nocoords, pattern = "Northing", Var = "COMMENT")
+BISH_UTMs_UTM <-  grepl.sub(data = BISH_nocoords, pattern = "UTM", Var = "COMMENT")
+
+# assign a blank - noo coords here
+BISH_nocoords$decimalLatitude = ""
+BISH_nocoords$decimalLongitude = ""
+
+# no conversion needed for these
+BISH_declat$decimalLatitude = BISH_declat$LatDeg
+BISH_declat$decimalLongitude = BISH_declat$LongDeg
+
+# converting DMS to decimal degree format
+BISH_minsec$decimalLatitude_temp = paste0(BISH_minsec$LatDeg, " ", BISH_minsec$LatMin, " ", BISH_minsec$LatSec)
+BISH_minsec$decimalLongitude_temp = paste0(BISH_minsec$LongDeg, " ", BISH_minsec$LongMin, " ", BISH_minsec$LongSec)
+BISH_minsec$decimalLatitude_temp = gsub("NA", "0", BISH_minsec$decimalLatitude_temp)
+BISH_minsec$decimalLongitude_temp = gsub("NA", "0", BISH_minsec$decimalLongitude_temp)
+
+
+BISH_minsec$decimalLatitude = parzer::parse_lat(BISH_minsec$decimalLatitude_temp)
+BISH_minsec$decimalLongitude = parzer::parse_lon(BISH_minsec$decimalLongitude_temp)
+```
+
+Extracting UTMs from comments section -this needs some more work, but it extracts most of them
+```{r}
+#extracting UTMS from comments section for things that look like northings
+Northing_starts_with <- c(".{0,33}21.{0,7}", ".{0,33}22.{0,7}", ".{0,33}23.{0,7}", ".{0,33}24.{0,7}")
+tempcoord <- stringr::str_extract(BISH_UTMs_UTM$COMMENT, Northing_starts_with)
+# get rid of messing alph numerics
+quadrant_system = c("4Q", "4 Q", "04Q", "04 Q", "zone 4", "NAD 83", "NAD83", "Zone 4", "NAD 83")
+tempcoord <- gsub(quadrant_system, "", tempcoord)
+# remove letters and punctuation
+regexp1 <- "[[:alpha:]]+"
+regexp2 <- "[[:punct:][:blank:]]+"
+tempcoord <- gsub(regexp1, "", (stringr::str_extract(tempcoord, Northing_starts_with)))
+tempcoord <- gsub(regexp2, "", tempcoord)
+#split string into northing and easting
+tempcoorddf <- as.data.frame(tempcoord)
+tempcoorddf <- tempcoorddf %>% tidyr::separate(tempcoord, into = c("easting", "northing"), sep = -7, convert = TRUE)
+tempcoorddf$flagged <- if_else(tempcoorddf$northing >=2000000 & tempcoorddf$northing <=2500000, "Good Coord", "Bad Coord", missing = NULL)
+BISH_UTMs_UTM <- cbind(BISH_UTMs_UTM, tempcoorddf)
+```
+```{r}
+#extracting UTMS from comments section for things that look like northings
+Northing_find <- c(".{0,0}Northing:.{0,12}")
+Easting_find <- c(".{0,0}Easting:.{0,12}")
+easting <- stringr::str_extract(BISH_UTMs_Northing$COMMENT, Easting_find)
+northing <- stringr::str_extract(BISH_UTMs_Northing$COMMENT, Northing_find)
+
+ #remove letters and punctuation and trim number
+regexp1 <- "[[:alpha:]]+"
+regexp2 <- "[[:punct:][:blank:]]+"
+easting <- gsub(regexp1, "", easting)
+easting <- gsub(regexp2, "", easting)
+northing <- gsub(regexp1, "", northing)
+northing <- gsub(regexp2, "", northing)
+northing <- substr(northing,1,7)
+easting <- substr(easting,1,6)
+
+#combine dataframe
+
+BISH_UTMs_Northing <- cbind(BISH_UTMs_Northing, easting, northing)
+BISH_UTMs_Northing$flagged <- if_else(BISH_UTMs_Northing$northing >=2000000 & BISH_UTMs_Northing$northing <=2500000,  "Bad Coord", "Good Coord",missing = NULL)
+
+BISH_UTMs <- rbind(BISH_UTMs_Northing, BISH_UTMs_UTM)
+```
+
+Reprojecting UTMs to lat lons
+```{r}
+BISH_UTMs_BI <- subset(BISH_UTMs, ISCO == "Hawaii")
+BISH_UTMs_west <- subset(BISH_UTMs, ISCO != "Hawaii")
+
+
+proj4stringBI="+proj=utm +zone=5 +datum=NAD83"
+proj4stringwest="+proj=utm +zone=4 +datum=NAD83"
+
+
+BI<- BISH_UTMs_BI %>% 
+  dplyr::select(easting, northing) %>%
+  project(proj4stringBI, inverse=TRUE)
+
+BIlatlon <- data.frame(lat=BI$y, lon=BI$x)
+
+
+west<- BISH_UTMs_west %>% 
+  dplyr::select(easting, northing) %>%
+  project(proj4stringwest, inverse=TRUE)
+
+westlatlon <- data.frame(lat=west$y, lon=west$x)
+
+
+BISH_UTMs_BI <-BIlatlon %>% 
+  dplyr::rename(decimalLatitude = lat, decimalLongitude = lon) %>%
+  cbind(BISH_UTMs_BI)
+BISH_UTMs_west <- westlatlon %>% dplyr::rename(decimalLatitude = lat, decimalLongitude = lon) %>%
+  cbind(BISH_UTMs_west)
+                          
+
+BISH_UTMs <- rbind(BISH_UTMs_BI, BISH_UTMs_west)
+
+```
+
+
+
+## 3. BISH- Standardize column names and select the ones we want
+```{r}
+#extracting out the column names that we want
+# first renaming everything to Darwincore
+#then extractig the fields we want
+BISH_nocoords <- BISH_nocoords %>% 
+  dplyr::rename(islandGroup = DATASET, recordedBy = COLLECTOR, recordNumber = COLLNUMBER, locality = LOCALITY, eventDate = COLLDATE, habitat = HABITAT, stateProvince = STATEPROV, island = ISCO, minimumElevationInMeters = VerbatimElevation, isCultivated = CULTIVATED, cultivar = CVAR,  occurrenceRemarks = PLDESCR, country = COUNTRY, fieldNotes = COMMENT, catalogNumber = BarcodeID, otherCatalogNumbers = TaxonNameID) %>% 
+  dplyr::select(dplyr::one_of(Allfields))
+
+BISH_declat <- BISH_declat %>% 
+  dplyr::rename(islandGroup = DATASET, recordedBy = COLLECTOR, recordNumber = COLLNUMBER, locality = LOCALITY, eventDate = COLLDATE, habitat = HABITAT, stateProvince = STATEPROV, island = ISCO, minimumElevationInMeters = VerbatimElevation, isCultivated = CULTIVATED, cultivar = CVAR,  occurrenceRemarks = PLDESCR, country = COUNTRY, fieldNotes = COMMENT, catalogNumber = BarcodeID, otherCatalogNumbers = TaxonNameID) %>% 
+  dplyr::select(dplyr::one_of(Allfields))
+
+BISH_minsec <- BISH_minsec %>% 
+  dplyr::rename(islandGroup = DATASET, recordedBy = COLLECTOR, recordNumber = COLLNUMBER, locality = LOCALITY, eventDate = COLLDATE, habitat = HABITAT, stateProvince = STATEPROV, island = ISCO, minimumElevationInMeters = VerbatimElevation, isCultivated = CULTIVATED, cultivar = CVAR,  occurrenceRemarks = PLDESCR, country = COUNTRY, fieldNotes = COMMENT, catalogNumber = BarcodeID, otherCatalogNumbers = TaxonNameID) %>% 
+  dplyr::select(dplyr::one_of(Allfields))
+
+BISH_UTMs <- BISH_UTMs %>% 
+  dplyr::rename(islandGroup = DATASET, recordedBy = COLLECTOR, recordNumber = COLLNUMBER, locality = LOCALITY, eventDate = COLLDATE, habitat = HABITAT, stateProvince = STATEPROV, island = ISCO, minimumElevationInMeters = VerbatimElevation, isCultivated = CULTIVATED, cultivar = CVAR,  occurrenceRemarks = PLDESCR, country = COUNTRY, fieldNotes = COMMENT, catalogNumber = BarcodeID, otherCatalogNumbers = TaxonNameID) %>% 
+  dplyr::select(dplyr::one_of(Allfields))
+
+BISH <- rbind(BISH_nocoords, BISH_declat, BISH_minsec, BISH_UTMs)
+```
+
+
+# PTBG Herbarium Data
+## 1. PTBG- Merge with POH table
+
+
+```{r}
+#removing some wierd blank garbage fields
+PTBG <- subset(PTBG, PTBG$family != "")
+```
+making a single TaxonName field so we can merge
+```{r}
+PTBG_spp <- subset(PTBG, PTBG$subspecies == "" & PTBG$variety == "")
+PTBG_subsp <- subset(PTBG, PTBG$subspecies != "" & PTBG$variety == "")
+PTBG_vars <- subset(PTBG, subspecies == "" & PTBG$variety != "")
+
+PTBG_spp$TaxonName <- paste0(PTBG_spp$genus, " ", PTBG_spp$species)
+PTBG_subsp$TaxonName <- paste0(PTBG_subsp$genus, " ", PTBG_subsp$species, " subsp. ", PTBG_subsp$subspecies)
+PTBG_vars$TaxonName <- paste0(PTBG_vars$genus, " ", PTBG_vars$species, " var. ", PTBG_vars$variety)
+
+PTBG <- rbind(PTBG_spp, PTBG_subsp,  PTBG_vars)
+
+#try to fix spelling errors, etc to fuzzy match to IPNI names
+# this didn't work any better than a straight match, in fact , it worked worse
+#spplist <- unique(PTBG$TaxonName)
+#gnr.out1<- unique(spplist[1:1000]) %>% gnr_resolve(data_source_ids = 167, best_match_only = T)
+#gnr.out2<- unique(spplist[1001:2000]) %>% gnr_resolve(data_source_ids = 167, best_match_only = T)
+#gnr.out3<- unique(spplist[2001:3000]) %>% gnr_resolve(data_source_ids = 167, best_match_only = T)
+#gnr.out4<- unique(spplist[4001:5000]) %>% gnr_resolve(data_source_ids = 167, best_match_only = T)
+#gnr.out5<- unique(spplist[5001:length(spplist)]) %>% gnr_resolve(data_source_ids = 167, best_match_only = T)
+#gnr.out <- rbind(gnr.out1, gnr.out2, gnr.out3, gnr.out4, gnr.out5)
+
+#test <- merge(PTBG, gnr.out, by.x = "TaxonName", by.y = "user_supplied_name", all.x = TRUE, all.y = FALSE)
+#test$scientificName_clean <- unlist(lapply(test$matched_name, remove.authors))
+#test
+```
+
+```{r}
+temp <- merge(POH_taxon, PTBG, by.y = "TaxonName", by.x = "scientificName", all.x = FALSE, all.y = TRUE)
+temp <- subset(temp, is.na(temp$taxonID))
+occ <- nrow(temp)
+tax <- length(unique(temp$scientificName))
+print(paste0("lost ", occ , " occurrences represented by ", tax, " unique values in the taxa names field"))
+```
+```{r}
+#get rid of extraneous columns
+PTBG <- PTBG %>% dplyr::select(-c(genus, family))
+PTBG<- merge(POH_taxon, PTBG, by.y = "TaxonName", by.x = "scientificName", all.x = FALSE, all.y = FALSE)
+# but still want to export mismatches
+write.csv(temp, file = "PTBGtaxa_Not_in_POH_table_12102020.csv", row.names = FALSE)
+```
+
+## 2. PTBG- Data Cleanup
+Creating a single associated species column
+```{r}
+#making a better associated spp column
+PTBG$associatedTaxa = paste0(PTBG$ASSCSPP, ", ", PTBG$THREATS)
+```
+
+## 3. PTBG- Standardize column names and select the ones we want
+```{r}
+#rename and select columns
+# rename new_name = old_name
+PTBG <- PTBG %>% 
+  dplyr::rename( catalogNumber = barcode, eventDate = COLDATE, recordNumber = COLID, recordedBy = COLNAME, fieldNotes = comments, country = COUNTRY, county = COUNTY, isCultivated = CULTIVATED, municipality = DISTRICT, minimumElevationInMeters = ELEVM, establishmentMeans = FREQUENCY, habitat = HABITAT, island = ISLAND, islandGroup = ISLAND_GROUP, decimalLatitude = LATDEC, decimalLongitude = LONGDEC, locality = LOCALITY, occurrenceRemarks = PLANTDESC, otherCatalogNumbers = SPECID, stateProvince=STATE) %>% 
+  dplyr::select(dplyr::one_of(Allfields))
+
+```
+
+# GBIF Herbarium Data
+## 1. GBIF- Merge with POH table
+Get rid of authornames
+```{r}
+GBIF_pres_spec$scientificName_clean <- unlist(lapply(GBIF_pres_spec$TaxonomicName, remove.authors))
+```
+```{r}
+temp <- merge(POH_taxon, GBIF_pres_spec,  by.x = "scientificName", by.y = "scientificName_clean", all.x = FALSE, all.y = TRUE)
+temp <- subset(temp, is.na(temp$taxonID))
+occ <- nrow(temp)
+tax <- length(unique(temp$scientificName))
+print(paste0("lost ", occ , " occurrences represented by ", tax, " unique values in the taxa names field"))
+```
+```{r}
+GBIF_pres_spec<- merge(POH_taxon, GBIF_pres_spec,  by.x = "scientificName", by.y = "scientificName_clean", all.x = FALSE, all.y = FALSE)
+# but still want to export mismatches
+write.csv(temp, file = "GBIFtaxa_Not_in_POH_table_12102020.csv", row.names = FALSE)
+```
+
+## 2. GBIF- Data Cleanup
+
+not explored at this time
+
+## 3. GBIF- Standardize column names and select the ones we want
+```{r}
+# new_name = old_name
+GBIF_pres_spec <- GBIF_pres_spec %>% 
+  dplyr::rename(publisher_temp = publisher, source_temp = source) %>% 
+  dplyr::rename(source = publisher_temp) %>% 
+  dplyr::select(dplyr::one_of(Allfields))
+```
+
+# US Herbarium Data
+## 1. US- Merge with POH table
+
+
+```{r}
+#need to split string to get rid of "filed as" portion of taxon name
+US$TaxonName <- str_extract(US$Taxonomic.Name..Filed.As...Identified.By...Identification.Date., "[^:]+")
+#need to remove author
+US$TaxonName <- unlist(lapply(US$TaxonName, remove.authors))
+```
+
+```{r}
+temp <- merge(POH_taxon, US,  by.x = "scientificName", by.y = "TaxonName", all.x = FALSE, all.y = TRUE)
+temp <- subset(temp, is.na(temp$taxonID))
+occ <- nrow(temp)
+tax <- length(unique(temp$scientificName))
+print(paste0("lost ", occ , " occurrences represented by ", tax, " unique values in the taxa names field"))
+```
+## 2. US- Data Cleanup
+
+not explored at this time; very little lat lon data in here
+```{r}
+US<- merge(POH_taxon, US,  by.x = "scientificName", by.y = "TaxonName", all.x = FALSE, all.y = FALSE)
+# but still want to export mismatches
+write.csv(temp, file = "UStaxa_Not_in_POH_table_12102020.csv", row.names = FALSE)
+```
+
+## 3. US- Standardize column names and select the ones we want
+```{r}
+# new_name = old_name
+US <- US %>% 
+  dplyr::rename(islandGroup = Archipelago, catalogNumber = Barcode, otherCatalogNumbers=Catalog.Number, decimalLatitude = Centroid.Latitude, decimalLongitude = Centroid.Longitude, recordNumber = Collection.Number, fieldNotes = Collection.Remarks, recordedBy = Collector.s., country = Country, isCultivated = Cultivated, eventDate = Date.Collected, county = District.County, minimumElevationInMeters =Elevation..m., island =Island.Name, habitat = Microhabitat.Description, locality=Precise.Locality,  stateProvince = Province.State, taxonRemarks = Taxonomy.Remarks) %>% 
+  dplyr::select(dplyr::one_of(Allfields))
+```
+
+## 4. Collate herbarium data into a single dataframe
+
+ Create empty dataframe with these columns
+```{r}
+combinedDF <-  setNames(data.frame(matrix(ncol = length(Allfields), nrow = 0)), Allfields)
+```
+```{r}
+#creating the correct source data for each
+BISH$source <- "BISH_database"
+PTBG$source <- "PTBG_database"
+US$source <- "PTBG_database"
+```
+Combine
+```{r}
+combinedDF <- plyr::rbind.fill(combinedDF, BISH, PTBG, US, GBIF_pres_spec)
+```
+```{r}
+combinedDF
+```
+
+Remove obvious duplicates
+```{r}
+deduped_combinedDF <-distinct(combinedDF, locality, recordedBy, recordNumber, scientificName, .keep_all = TRUE)
+```
+```{r}
+#How many duplicates did we remove?
+nrow(combinedDF) - nrow(deduped_combinedDF)
+```
+assign UUID
+```{r}
+deduped_combinedDF$UUID <- random_id(n = nrow(deduped_combinedDF), bytes = 16, use_openssl = TRUE)
+```
+
+## 6. Standardize the spelling of island names
+Only care about the main islands for now
+
+```{r}
+#remove the term " island"
+deduped_combinedDF$island <- gsub(" island", "", deduped_combinedDF$island)
+deduped_combinedDF$island <- gsub(" Island", "", deduped_combinedDF$island)
+#removing the punctuation
+deduped_combinedDF$island <- gsub("`", "", deduped_combinedDF$island)
+deduped_combinedDF$island <- gsub("'", "", deduped_combinedDF$island)
+deduped_combinedDF$island <- gsub("&", "and", deduped_combinedDF$island)
+# only first letter upper case
+deduped_combinedDF$island <- str_to_title(deduped_combinedDF$island)
+# deal with the unknown islands
+deduped_combinedDF$island <- gsub('Sandwichs', "", deduped_combinedDF$island)
+deduped_combinedDF$island <- gsub('Sand', "Oahu", deduped_combinedDF$island)
+deduped_combinedDF$island <- gsub("Unknown", "" , deduped_combinedDF$island)
+unique(deduped_combinedDF$island)
+
+```
+
+
+## 7. Remove horrible points by seeing which fall in the ocean.
+
+
+```{r}
+DF <- deduped_combinedDF %>% mutate_all(na_if,"")
+
+nocoords <- subset(DF, is.na(decimalLatitude))
+hascoords <- subset(DF, !is.na(decimalLatitude))
+```
+How many have coordinates?
+```{r}
+nrow(hascoords)
+```
+
+```{r}
+oo <- coord_incomplete(hascoords, lat = "decimalLatitude", lon = "decimalLongitude", drop = TRUE)
+oo <- coord_imprecise (oo, which = "both", lat = "decimalLatitude", lon = "decimalLongitude", drop = TRUE)
+oo <- coord_unlikely (oo, lat = "decimalLatitude", lon = "decimalLongitude", drop = TRUE)
+oo$CleanCoordinates <- "yes"
+oo <- oo %>% dplyr::select(UUID, CleanCoordinates)
+hascoords <- merge(hascoords, oo, by="UUID", all.x = TRUE, all.y = FALSE)
+hascoords
+```
+load a polygon of the main islands, buffered by 50m to account for GPS inaccuracy
+This polygon is only for the main hawaiian islands - we should build another that includes the NW islands
+```{r}
+islandpolys <- st_read("Coastline.shp")
+```
+```{r}
+hascoords_sub <- subset(hascoords, CleanCoordinates == "yes")
+hascoords_sub <- sf::st_as_sf(hascoords_sub, coords = c("decimalLongitude", "decimalLatitude"), crs = 4326)
+
+hascoords_sub <- st_join(hascoords_sub, islandpolys, join = st_intersects,  left = TRUE )
+```
+```{r}
+hascoords_sub_deoceanized <- subset(as.data.frame(hascoords_sub), !is.na(hascoords_sub$isle))
+hascoords_sub_deoceanized$CleanCoordinates_not_ocean <- "yes"
+hascoords_sub_deoceanized
+```
+replace island Nas with values from shapefile "isle" column
+```{r}
+hascoords_sub_deoceanized$island <- hascoords_sub_deoceanized$isle
+hascoords_sub_deoceanized$island <- gsub("kahoolawe", "Kahoolawe", hascoords_sub_deoceanized$island)
+```
+
+merge deoceanized column back into main dataframe
+```{r}
+# mergin back with orginal data.frame
+ee <- hascoords_sub_deoceanized %>% dplyr::select(UUID, CleanCoordinates_not_ocean)
+finalDF <- merge(deduped_combinedDF, ee, by="UUID", all.x = TRUE, all.y = FALSE)
+finalDF
+```
+replace lat lons with NAs if their point isn't clean and landing on land
+
+```{r}
+nicecoords <- subset(finalDF, CleanCoordinates_not_ocean == "yes")
+notnicecoords <- subset(finalDF, is.na(CleanCoordinates_not_ocean))
+notnicecoords$decimalLatitude <- NA
+notnicecoords$decimalLongitude <- NA
+#rbind back together
+finalDF <- rbind(nicecoords,notnicecoords)
+```
+
+```{r}
+finalDF <- finalDF %>% dplyr::select(Allfields)
+write.csv(finalDF, file = "All_herbaria_COMPILED_12142020.csv", row.names = FALSE)
+finalDF
+```
+
+
+
+FINAISH!
+
+
+
+
+
+
+
+
+
+
+
+
+extras not employed
+```{r}
+#removing wierd characters
+#combinedDF$scientificName <- gsub("[{}]", "", combinedDF$scientificName)
+#combinedDF$scientificName <- gsub("_", " ", combinedDF$scientificName)
+```
+
+
+
+
+
