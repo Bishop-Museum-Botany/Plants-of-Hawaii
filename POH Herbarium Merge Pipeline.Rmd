@@ -15,16 +15,20 @@ Then:
 5) Removes obvious duplicates, keeping BISH data as priority
 6) Standardizes the spelling of island names
 7) Removes bad latlon points that fall in the ocean
-8) Assigns a cultivated, naturalized or unknown status
+8) Standardizes Date Format
+9) Assigns a cultivated, naturalized or unknown status
 
 
 TO-DO list:
 1) a few coordinates in the BISH dataset need special attention
-2) convert elevation to units (they are currently in ft or m)
-3) Build a shapefile that includes the NW islands?
-5) Clean collector numbers so we can find duplicates easier
+2) convert elevation to metric units (they are currently in ft or m)
+3) Build a shapefile that includes the NW islands
+5) Clean collector numbers so we can find duplicates easier and also find duplicates with different IDs
 6) PRIORITY! Reconcile discarded occurrences with POH taxon list - do some need to be added to the list?
-7) PRIORITY! lubridate is giving unusual results for some formats, at least for US data
+7) need to make sure csv files of non-merging occurrence records are being exported so that we can consider adding them to taxon table
+8) How are we going to deal with loccurrence UUID and version updates? We want UUIDs for incorporated occurrences to be static, so we need to code it so that only new occurrence records get a new ID.
+9) Maybe we should remove duplicates at the end once dates and GPS are in standard formats - that should help thin it more.
+
 
 ```{r, }
 require(knitr)
@@ -40,6 +44,7 @@ p_load("dplyr",  "ggplot2", "taxize", "sp", "sf", "proj4", "data.table", "string
 ## These are the fields we ultimately want in the final data set
 These are DarwinCore column names that are currently in the POH schema
 ```{r}
+
 Taxonfields <- c( "taxonID", "IPNIID", "parentNameUsageID", "scientificName", "scientificNameAuthorship", "namePublishedIn", "originalNameUsage", "taxonRank", "kingdom", "phylum", "class", "order", "family", "genus", "subgenus", "specificEpithet", "vernacularName", "taxonRemarks")
 
 Locationfields <- c("locationID", "higherGeographyID", "locationType", "continent", "waterbody", "islandGroup", "island", "country", "countrycode", "stateProvince", "county", "municipality", "locality", "minimumElevationInMeters", "maximumElevationInMeters", "decimalLatitude", "decimalLongitude", "geodeticDatum", "coordinateUncertaintyInMeters", "footprintWKT", "footprintSRS", "locationRemarks" )
@@ -56,16 +61,13 @@ POH_taxon <- read.csv("POH_TAXA_12_3_2020.csv", header=T, sep=',', stringsAsFact
 
 #Herbarium Data                                                                                                         
 BISH <- read.csv("dbo_Specimens1a.csv", header=T, sep=',', stringsAsFactors=F)
-
 PTBG <- read.csv("NTBG_HerbariumSearchExport_20201209.csv", header=T, sep=',', stringsAsFactors=F)
 US <- read.csv("nmnhsearch-20201210005846.csv", header=T, sep=',', stringsAsFactors=F)
 GBIF <- read.csv("occurrence.csv", header=T, sep=',', stringsAsFactors=F) %>% dplyr::rename(TaxonomicName = scientificName) %>% dplyr::select(-c(	taxonID, kingdom,	phylum,	class,	order,	family,	genus, vernacularName,))
 ## subset to remove human occurrences (we'll deal with those later)
 GBIF_pres_spec <- subset(GBIF, GBIF$basisOfRecord == "PRESERVED_SPECIMEN")
-# this is the taxonomy information we'll merge with
 
 #This polygon is only for the main hawaiian islands - we should build another that includes the NW islands
-
 islandpolys <- st_read("Coastline.shp")
 ```
 
@@ -97,6 +99,7 @@ print(paste0("lost ", occ , " occurrences represented by ", tax, " BISH taxon ID
 ```
 ```{r}
 BISH<- merge(BISH, POH_taxon, by.x = "TaxonNameID", by.y = "BISH_TaxonID", all.x = FALSE, all.y = FALSE)
+write.csv(temp, file = "BISHIDs_Not_in_POH_table_12102020.csv", row.names = FALSE)
 ```
 
 
@@ -135,8 +138,15 @@ Extracting UTMs from comments section -this needs some more work, but it extract
 Northing_starts_with <- c(".{0,33}21.{0,7}", ".{0,33}22.{0,7}", ".{0,33}23.{0,7}", ".{0,33}24.{0,7}")
 tempcoord <- stringr::str_extract(BISH_UTMs_UTM$COMMENT, Northing_starts_with)
 # get rid of messing alph numerics
-quadrant_system = c("4Q", "4 Q", "04Q", "04 Q", "zone 4", "NAD 83", "NAD83", "Zone 4", "NAD 83")
-tempcoord <- gsub(quadrant_system, "", tempcoord)
+tempcoord <- gsub("4Q", "", tempcoord)
+tempcoord <- gsub("4 Q", "", tempcoord)
+tempcoord <- gsub("04Q", "", tempcoord)
+tempcoord <- gsub("04 Q", "", tempcoord)
+tempcoord <- gsub("zone 4", "", tempcoord)
+tempcoord <- gsub("NAD 83", "", tempcoord)
+tempcoord <- gsub("NAD83", "", tempcoord)
+tempcoord <- gsub("Zone 4", "", tempcoord)
+
 # remove letters and punctuation
 regexp1 <- "[[:alpha:]]+"
 regexp2 <- "[[:punct:][:blank:]]+"
@@ -233,60 +243,10 @@ BISH_UTMs <- BISH_UTMs %>%
 BISH <- rbind(BISH_nocoords, BISH_declat, BISH_minsec, BISH_UTMs)
 nrow(BISH)
 ```
-Standardize BISH dates!
-
-```{r}
-# get rid of inaccurrate seasons
-BISH$eventDate <- gsub("Winter ", "", BISH$eventDate)
-BISH$eventDate <- gsub("Summer ", "", BISH$eventDate)
-BISH$eventDate <- gsub("Spring ", "", BISH$eventDate)
-BISH$eventDate <- gsub("Late ", "", BISH$eventDate)
-BISH$eventDate <- gsub("ca ", "", BISH$eventDate)
-BISH$eventDate <- gsub("ca. ", "", BISH$eventDate)
-BISH$eventDate <- gsub("[.]", "", BISH$eventDate)
-# get rid of ranges, we'll just take the latest date, it looks like they're only a few days apart anway
-BISH$eventDate <- gsub(".*-", "", BISH$eventDate)
-# create a temp date just so we can see who the trouble makers are
-BISH$tempdate <- lubridate::dmy(BISH$eventDate)
-# subset into parsed (yay) and unparsed (needs more work)
-dateparsed <- subset(BISH, !is.na(BISH$tempdate))
-dateunparsed <- subset(BISH, is.na(BISH$tempdate))
-# parsed is good to go, so we can reassign dates in standard format here
-dateparsed$eventDate <- lubridate::dmy(dateparsed$eventDate)
-```
-```{r}
-#deal with the unparsed ones
-dateunparsed$tempdate <- lubridate::parse_date_time(dateunparsed$eventDate, "%m-%Y")
-dateunparsed_my <- subset(dateunparsed, !is.na(dateunparsed$tempdate))
-#worked for these, so let's assign it to eventDate
-dateunparsed_my$eventDate <- lubridate::parse_date_time(dateunparsed_my$eventDate, "%m-%Y")
-#since only month and year were assigned, we're going to assign a day of NA
-dateunparsed_my$eventDate <- stringi::stri_replace_last_fixed(dateunparsed_my$eventDate, '-01 UTC', '-00')
-
-# but not for these, more work needed
-dateunparsed_y <- subset(dateunparsed, is.na(dateunparsed$tempdate))
-regexp1 <- "[[:alpha:]]+"
-regexp2 <- "[[:punct:][:blank:]]+"
-dateunparsed_y$eventDate <- gsub(regexp1, "", dateunparsed_y$eventDate)
-dateunparsed_y$eventDate <- gsub(regexp2, "", dateunparsed_y$eventDate)
-dateunparsed_y$eventDate <- lubridate::parse_date_time(dateunparsed_y$eventDate, "%Y")
-dateunparsed_y$eventDate <- stringi::stri_replace_last_fixed(dateunparsed_y$eventDate, '-01-01 UTC', '-00-00')
-```
-```{r}
-#merging back together and removing the tempdate column
-BISH <- rbind(dateparsed, dateunparsed_my, dateunparsed_y) %>% dplyr::select(-c(tempdate))
-BISH
-```
-
 
 # PTBG Herbarium Data
 ## 1. PTBG- Merge with POH table
 
-
-```{r}
-#removing some wierd blank garbage fields
-PTBG <- subset(PTBG, PTBG$family != "")
-```
 making a single TaxonName field so we can merge
 ```{r}
 PTBG_spp <- subset(PTBG, PTBG$subspecies == "" & PTBG$variety == "")
@@ -335,6 +295,373 @@ Creating a single associated species column
 #making a better associated spp column
 PTBG$associatedTaxa = paste0(PTBG$ASSCSPP, ", ", PTBG$THREATS)
 ```
+
+
+## 3. PTBG- Standardize column names and select the ones we want
+```{r}
+#rename and select columns
+# rename new_name = old_name
+PTBG <- PTBG %>% 
+  dplyr::rename( catalogNumber = barcode, eventDate = COLDATE, recordNumber = COLID, recordedBy = COLNAME, fieldNotes = comments, country = COUNTRY, county = COUNTY, isCultivated = CULTIVATED, municipality = DISTRICT, minimumElevationInMeters = ELEVM, establishmentMeans = FREQUENCY, habitat = HABITAT, island = ISLAND, islandGroup = ISLAND_GROUP, decimalLatitude = LATDEC, decimalLongitude = LONGDEC, locality = LOCALITY, occurrenceRemarks = PLANTDESC, otherCatalogNumbers = SPECID, stateProvince=STATE) %>% 
+  dplyr::select(dplyr::one_of(Allfields))
+
+```
+
+# GBIF Herbarium Data
+## 1. GBIF- Merge with POH table
+Get rid of authornames that are embedded in the taxon name
+```{r}
+GBIF_pres_spec$scientificName_clean <- unlist(lapply(GBIF_pres_spec$TaxonomicName, remove.authors))
+```
+```{r}
+temp <- merge(POH_taxon, GBIF_pres_spec,  by.x = "scientificName", by.y = "scientificName_clean", all.x = FALSE, all.y = TRUE)
+temp <- subset(temp, is.na(temp$taxonID))
+occ <- nrow(temp)
+tax <- length(unique(temp$scientificName))
+print(paste0("lost ", occ , " occurrences represented by ", tax, " unique values in the taxa names field"))
+```
+```{r}
+GBIF_pres_spec<- merge(POH_taxon, GBIF_pres_spec,  by.x = "scientificName", by.y = "scientificName_clean", all.x = FALSE, all.y = FALSE)
+# but still want to export mismatches
+write.csv(temp, file = "GBIFtaxa_Not_in_POH_table_12102020.csv", row.names = FALSE)
+```
+
+## 2. GBIF- Data Cleanup
+none
+
+## 3. GBIF- Standardize column names and select the ones we want
+```{r}
+# new_name = old_name
+GBIF_pres_spec <- GBIF_pres_spec %>% 
+  dplyr::rename(publisher_temp = publisher, source_temp = source) %>% 
+  dplyr::rename(source = publisher_temp) %>% 
+  dplyr::select(dplyr::one_of(Allfields))
+```
+
+# US Herbarium Data
+## 1. US- Merge with POH table
+
+
+```{r}
+#need to split string to get rid of "filed as" portion of taxon name
+US$TaxonName <- str_extract(US$Taxonomic.Name..Filed.As...Identified.By...Identification.Date., "[^:]+")
+#need to remove author
+US$TaxonName <- unlist(lapply(US$TaxonName, remove.authors))
+```
+```{r}
+temp <- merge(POH_taxon, US,  by.x = "scientificName", by.y = "TaxonName", all.x = FALSE, all.y = TRUE)
+temp <- subset(temp, is.na(temp$taxonID))
+occ <- nrow(temp)
+tax <- length(unique(temp$scientificName))
+print(paste0("lost ", occ , " occurrences represented by ", tax, " unique values in the taxa names field"))
+```
+```{r}
+US<- merge(POH_taxon, US,  by.x = "scientificName", by.y = "TaxonName", all.x = FALSE, all.y = FALSE)
+# but still want to export mismatches
+write.csv(temp, file = "UStaxa_Not_in_POH_table_12102020.csv", row.names = FALSE)
+```
+
+
+## 2. US- Data Cleanup
+ very little lat lon data in here
+ 
+
+## 3. US- Standardize column names and select the ones we want
+```{r}
+# new_name = old_name
+US <- US %>% 
+  dplyr::rename(islandGroup = Archipelago, catalogNumber = Barcode, otherCatalogNumbers=Catalog.Number, decimalLatitude = Centroid.Latitude, decimalLongitude = Centroid.Longitude, recordNumber = Collection.Number, fieldNotes = Collection.Remarks, recordedBy = Collector.s., country = Country, isCultivated = Cultivated, eventDate = Date.Collected, county = District.County, minimumElevationInMeters =Elevation..m., island =Island.Name, habitat = Microhabitat.Description, locality=Precise.Locality,  stateProvince = Province.State, taxonRemarks = Taxonomy.Remarks) %>% dplyr::select(dplyr::one_of(Allfields))
+```
+
+## 4. Collate herbarium data into a single dataframe
+
+ Create empty dataframe with these columns
+```{r}
+combinedDF <-  setNames(data.frame(matrix(ncol = length(Allfields), nrow = 0)), Allfields)
+```
+```{r}
+#creating the correct source data for each
+BISH$source <- "BISH_database"
+PTBG$source <- "PTBG_database"
+US$source <- "US_database"
+```
+Combine
+```{r}
+combinedDF <- plyr::rbind.fill(combinedDF, BISH, PTBG, US, GBIF_pres_spec)
+```
+
+## 5. Remove Duplicates
+Removes obvious duplicates, BISH should be kept because it's the first in the dataframe
+```{r}
+deduped_combinedDF <-distinct(combinedDF, locality, recordedBy, recordNumber, scientificName, decimalLatitude, .keep_all = TRUE)
+```
+```{r}
+#How many duplicates did we remove?
+nrow(combinedDF) - nrow(deduped_combinedDF)
+```
+assign UUID to make later merges easier
+```{r}
+deduped_combinedDF$UUID <- random_id(n = nrow(deduped_combinedDF), bytes = 16, use_openssl = TRUE)
+```
+
+## 6. Standardize the spelling of island names
+Only care about the main islands for now
+
+```{r}
+#remove the term " island"
+deduped_combinedDF$island <- gsub(" island", "", deduped_combinedDF$island)
+deduped_combinedDF$island <- gsub(" Island", "", deduped_combinedDF$island)
+#removing the punctuation
+deduped_combinedDF$island <- gsub("`", "", deduped_combinedDF$island)
+deduped_combinedDF$island <- gsub("'", "", deduped_combinedDF$island)
+deduped_combinedDF$island <- gsub("&", "and", deduped_combinedDF$island)
+# only first letter upper case
+deduped_combinedDF$island <- str_to_title(deduped_combinedDF$island)
+# deal with the unknown islands
+deduped_combinedDF$island <- gsub('Sandwichs', "", deduped_combinedDF$island)
+deduped_combinedDF$island <- gsub('Sand', "Oahu", deduped_combinedDF$island)
+deduped_combinedDF$island <- gsub("Unknown", "" , deduped_combinedDF$island)
+unique(deduped_combinedDF$island)
+```
+
+
+## 7. Remove bad points by seeing which fall in the ocean.
+```{r}
+DF <- deduped_combinedDF %>% mutate_all(na_if,"")
+
+nocoords <- subset(DF, is.na(decimalLatitude))
+hascoords <- subset(DF, !is.na(decimalLatitude))
+```
+How many have coordinates (no matter how bad)?
+```{r}
+nrow(hascoords)
+```
+```{r}
+oo <- coord_incomplete(hascoords, lat = "decimalLatitude", lon = "decimalLongitude", drop = TRUE)
+oo <- coord_imprecise (oo, which = "both", lat = "decimalLatitude", lon = "decimalLongitude", drop = TRUE)
+oo <- coord_unlikely (oo, lat = "decimalLatitude", lon = "decimalLongitude", drop = TRUE)
+oo$CleanCoordinates <- "yes"
+oo <- oo %>% dplyr::select(UUID, CleanCoordinates)
+hascoords <- merge(hascoords, oo, by="UUID", all.x = TRUE, all.y = FALSE)
+```
+
+```{r}
+hascoords_sub <- subset(hascoords, CleanCoordinates == "yes")
+hascoords_sub <- sf::st_as_sf(hascoords_sub, coords = c("decimalLongitude", "decimalLatitude"), crs = 4326)
+
+hascoords_sub <- st_join(hascoords_sub, islandpolys, join = st_intersects,  left = TRUE )
+```
+```{r}
+hascoords_sub_deoceanized <- subset(as.data.frame(hascoords_sub), !is.na(hascoords_sub$isle))
+hascoords_sub_deoceanized$CleanCoordinates_not_ocean <- "yes"
+hascoords_sub_deoceanized
+```
+replace island Nas with values from shapefile "isle" column
+this is helpful for records that didn't record the island name, but have an accurate GPS point
+```{r}
+hascoords_sub_deoceanized$island <- hascoords_sub_deoceanized$isle
+hascoords_sub_deoceanized$island <- gsub("kahoolawe", "Kahoolawe", hascoords_sub_deoceanized$island)
+```
+
+merge deoceanized column back into main dataframe
+```{r}
+# mergin back with orginal data.frame
+ee <- hascoords_sub_deoceanized %>% dplyr::select(UUID, CleanCoordinates_not_ocean)
+finalDF <- merge(deduped_combinedDF, ee, by="UUID", all.x = TRUE, all.y = FALSE)
+```
+replace lat lons with NAs if their point isn't clean and landing on land
+```{r}
+nicecoords <- subset(finalDF, CleanCoordinates_not_ocean == "yes")
+notnicecoords <- subset(finalDF, is.na(CleanCoordinates_not_ocean))
+notnicecoords$decimalLatitude <- NA
+notnicecoords$decimalLongitude <- NA
+#rbind back together
+finalDF <- rbind(nicecoords,notnicecoords)
+```
+
+```{r}
+finalDF <- finalDF %>% dplyr::select(Allfields)
+write.csv(finalDF, file = "All_herbaria_COMPILED_12142020.csv", row.names = FALSE)
+finalDF
+```
+
+## 8. Standardize Dates into Year-Month-Day format
+
+
+```{r}
+# First, get weird of weird words (e.g. "Summer" is not helpful, we just want the year in this case)
+finalDF$eventDate <- gsub("Winter ", "", finalDF$eventDate)
+finalDF$eventDate <- gsub("Summer ", "", finalDF$eventDate)
+finalDF$eventDate <- gsub("Spring ", "", finalDF$eventDate)
+finalDF$eventDate <- gsub("Late ", "", finalDF$eventDate)
+finalDF$eventDate <- gsub("ca ", "", finalDF$eventDate)
+finalDF$eventDate <- gsub("ca. ", "", finalDF$eventDate)
+finalDF$eventDate <- gsub("[.]", "", finalDF$eventDate)
+
+# Second, we'll get rid of ranges by taking the first date mentioned (in all cases in the dataset,this only makes a few days of difference)
+finalDF$eventDate <- gsub("to.*", "", finalDF$eventDate)
+finalDF$eventDate <- gsub("or.*", "", finalDF$eventDate)
+finalDF$eventDate <- gsub("[(].*", "", finalDF$eventDate)
+finalDF$eventDate <- gsub(".*-", "", finalDF$eventDate)
+
+#third, we'll trim the whitespaces off the end
+
+finalDF$eventDate <- str_trim(finalDF$eventDate, side = "both")
+
+# Fourth, we need to divide the dataset into different date formats so we can apply different treatments to get to the right format
+# lets assign a column that looks at the number of characters
+finalDF$nchar_temp <- nchar(finalDF$eventDate)
+unique(finalDF$nchar_temp)
+```
+```{r}
+#divide into different groups
+nodate <- subset(finalDF, nchar_temp >= 0 & nchar_temp < 4)
+justyear <- subset(finalDF, nchar_temp >= 4 & nchar_temp <= 7)
+eightchars <- subset(finalDF, nchar_temp == 8)
+ninetenchars <- subset(finalDF, nchar_temp >= 9 & nchar_temp <= 10)
+tenelevchars <- subset(finalDF, nchar_temp >= 11 & nchar_temp <= 12)
+lotschars <- subset(finalDF, nchar_temp > 12)
+```
+
+```{r}
+#fix nodate
+# remove any month only entries
+regexp_alpha <- "[[:alpha:]]+"
+nodate$eventDate <- gsub(regexp_alpha, "", nodate$eventDate)
+# this will assume that anything that's two digits (e.g. "74") means 1974. but not for anything that can be confused with the 2000s.
+
+# What's the last do digits of the current year??
+currentyear <- 21 #<- fill this in!!
+nodate$eventDate <- ifelse(nodate$eventDate > currentyear, paste0(19, nodate$eventDate), "no date" )
+# convert to format
+nodate$eventDate <- lubridate::parse_date_time(nodate$eventDate, "%Y")
+nodate$eventDate <- gsub( "-01-01", "-00-00", nodate$eventDate)
+#done!
+# we'll get a " many failed to parse" here, and that's okay
+```
+```{r}
+#fix just year
+# get rid of characters
+regexp_alpha <- "[[:alpha:]]+"
+regexp_symbols <- "[[:punct:][:blank:]]+"
+justyear$eventDate <- gsub(regexp_alpha, "", justyear$eventDate)
+justyear$eventDate <- gsub(regexp_symbols, "", justyear$eventDate)
+
+# convert to format
+justyear$eventDate <- lubridate::parse_date_time(justyear$eventDate, "%Y")
+justyear$eventDate <- gsub( "-01-01", "-00-00", justyear$eventDate)
+
+#done!
+```
+
+```{r}
+#fix eight chars
+# gotta subset cuz there is two types here
+eightchars_my <- grepl.sub(data = eightchars, pattern = regexp_alpha, Var = "eventDate", keep.found = TRUE)
+eightchars_slash <- grepl.sub(data = eightchars, pattern = regexp_alpha, Var = "eventDate", keep.found = FALSE)
+
+# fixing eightchars_my first
+eightchars_my$eventDate <- lubridate::parse_date_time(eightchars_my$eventDate, "%m-%Y")
+#since only month and year were assigned, we're going to assign a day of NA
+eightchars_my$eventDate <- stringi::stri_replace_last_fixed(eightchars_my$eventDate, '-01', '-00')
+# DONE!
+
+# fixing eightchars_slash second
+# get rid of characters
+regexp_alpha <- "[[:alpha:]]+"
+eightchars_slash$eventDate <- gsub(regexp_alpha, "", eightchars_slash$eventDate)
+
+#  I'll assume mm/dd/yyyy.
+eightchars_slash$eventDate <- lubridate::mdy(eightchars_slash$eventDate)
+
+#bind together again
+eightchars <- rbind(eightchars_my, eightchars_slash)
+```
+```{r}
+# fix ninetenchars
+
+ninetenchars_other <- grepl.sub(data = ninetenchars, pattern = regexp_alpha, Var = "eventDate", keep.found = TRUE)
+ninetenchars_slash <- grepl.sub(data = ninetenchars, pattern = regexp_alpha, Var = "eventDate", keep.found = FALSE)
+
+# fixing ninetenchars_other first
+ninetenchars_other$eventDate <- lubridate::dmy(ninetenchars_other$eventDate)
+# DONE!
+
+# fixing ninetenchars_slash second
+# get rid of characters
+regexp_alpha <- "[[:alpha:]]+"
+ninetenchars_slash$eventDate <- gsub(regexp_alpha, "", ninetenchars_slash$eventDate)
+
+#  I'll assume mm/dd/yyyy.
+ninetenchars_slash$eventDate <- lubridate::mdy(ninetenchars_slash$eventDate)
+
+#bind together again
+ninetenchars <- rbind(ninetenchars_other, ninetenchars_slash)
+```
+```{r}
+# fix tenelevchars
+regexp_alpha <- "[[:alpha:]]+"
+tenelevchars_alpha <- grepl.sub(data = tenelevchars, pattern = regexp_alpha, Var = "eventDate", keep.found = TRUE)
+tenelevchars_slash <- grepl.sub(data = ninetenchars, pattern = regexp_alpha, Var = "eventDate", keep.found = FALSE)
+
+#tenelevchars$eventDate <- lubridate::dmy(tenelevchars$eventDate)
+
+```
+
+```{r}
+unique(tenelevchars_alpha$eventDate)
+```
+
+
+
+
+
+
+OLD STUFF
+```{r}
+# get rid of inaccurrate seasons
+BISH$eventDate <- gsub("Winter ", "", BISH$eventDate)
+BISH$eventDate <- gsub("Summer ", "", BISH$eventDate)
+BISH$eventDate <- gsub("Spring ", "", BISH$eventDate)
+BISH$eventDate <- gsub("Late ", "", BISH$eventDate)
+BISH$eventDate <- gsub("ca ", "", BISH$eventDate)
+BISH$eventDate <- gsub("ca. ", "", BISH$eventDate)
+BISH$eventDate <- gsub("[.]", "", BISH$eventDate)
+# get rid of ranges, we'll just take the latest date, it looks like they're only a few days apart anway
+BISH$eventDate <- gsub(".*-", "", BISH$eventDate)
+# create a temp date just so we can see who the trouble makers are
+BISH$tempdate <- lubridate::dmy(BISH$eventDate)
+# subset into parsed (yay) and unparsed (needs more work)
+dateparsed <- subset(BISH, !is.na(BISH$tempdate))
+dateunparsed <- subset(BISH, is.na(BISH$tempdate))
+# parsed is good to go, so we can reassign dates in standard format here
+dateparsed$eventDate <- lubridate::dmy(dateparsed$eventDate)
+```
+```{r}
+#deal with the unparsed ones
+dateunparsed$tempdate <- lubridate::parse_date_time(dateunparsed$eventDate, "%m-%Y")
+dateunparsed_my <- subset(dateunparsed, !is.na(dateunparsed$tempdate))
+#worked for these, so let's assign it to eventDate
+dateunparsed_my$eventDate <- lubridate::parse_date_time(dateunparsed_my$eventDate, "%m-%Y")
+#since only month and year were assigned, we're going to assign a day of NA
+dateunparsed_my$eventDate <- stringi::stri_replace_last_fixed(dateunparsed_my$eventDate, '-01 UTC', '-00')
+
+# but not for these, more work needed
+dateunparsed_y <- subset(dateunparsed, is.na(dateunparsed$tempdate))
+regexp1 <- "[[:alpha:]]+"
+regexp2 <- "[[:punct:][:blank:]]+"
+dateunparsed_y$eventDate <- gsub(regexp1, "", dateunparsed_y$eventDate)
+dateunparsed_y$eventDate <- gsub(regexp2, "", dateunparsed_y$eventDate)
+dateunparsed_y$eventDate <- lubridate::parse_date_time(dateunparsed_y$eventDate, "%Y")
+dateunparsed_y$eventDate <- stringi::stri_replace_last_fixed(dateunparsed_y$eventDate, '-01-01 UTC', '-00-00')
+```
+```{r}
+#merging back together and removing the tempdate column
+BISH <- rbind(dateparsed, dateunparsed_my, dateunparsed_y) %>% dplyr::select(-c(tempdate))
+BISH
+```
+
+PTBG dates
 Standardize date format
 ```{r}
 # get rid of inaccurrate seasons
@@ -368,83 +695,12 @@ PTBG <- rbind(dateparsed, dateunparsed_mdy, dateunparsed_y ) %>% dplyr::select(-
 PTBG$COLDATE <- gsub(" UTC", "", PTBG$COLDATE)
 ```
 
-## 3. PTBG- Standardize column names and select the ones we want
-```{r}
-#rename and select columns
-# rename new_name = old_name
-PTBG <- PTBG %>% 
-  dplyr::rename( catalogNumber = barcode, eventDate = COLDATE, recordNumber = COLID, recordedBy = COLNAME, fieldNotes = comments, country = COUNTRY, county = COUNTY, isCultivated = CULTIVATED, municipality = DISTRICT, minimumElevationInMeters = ELEVM, establishmentMeans = FREQUENCY, habitat = HABITAT, island = ISLAND, islandGroup = ISLAND_GROUP, decimalLatitude = LATDEC, decimalLongitude = LONGDEC, locality = LOCALITY, occurrenceRemarks = PLANTDESC, otherCatalogNumbers = SPECID, stateProvince=STATE) %>% 
-  dplyr::select(dplyr::one_of(Allfields))
-
-```
-
-# GBIF Herbarium Data
-## 1. GBIF- Merge with POH table
-Get rid of authornames
-```{r}
-GBIF_pres_spec$scientificName_clean <- unlist(lapply(GBIF_pres_spec$TaxonomicName, remove.authors))
-```
-```{r}
-temp <- merge(POH_taxon, GBIF_pres_spec,  by.x = "scientificName", by.y = "scientificName_clean", all.x = FALSE, all.y = TRUE)
-temp <- subset(temp, is.na(temp$taxonID))
-occ <- nrow(temp)
-tax <- length(unique(temp$scientificName))
-print(paste0("lost ", occ , " occurrences represented by ", tax, " unique values in the taxa names field"))
-```
-```{r}
-GBIF_pres_spec<- merge(POH_taxon, GBIF_pres_spec,  by.x = "scientificName", by.y = "scientificName_clean", all.x = FALSE, all.y = FALSE)
-# but still want to export mismatches
-write.csv(temp, file = "GBIFtaxa_Not_in_POH_table_12102020.csv", row.names = FALSE)
-```
-
-## 2. GBIF- Data Cleanup
-
-standardize dates
-```{r}
-GBIF_pres_spec$eventDate <- lubridate::ymd_hms(GBIF_pres_spec$eventDate)
-GBIF_pres_spec$eventDate <- gsub(" UTC", "", GBIF_pres_spec$eventDate)
-```
+FINISH!
 
 
-## 3. GBIF- Standardize column names and select the ones we want
-```{r}
-# new_name = old_name
-GBIF_pres_spec <- GBIF_pres_spec %>% 
-  dplyr::rename(publisher_temp = publisher, source_temp = source) %>% 
-  dplyr::rename(source = publisher_temp) %>% 
-  dplyr::select(dplyr::one_of(Allfields))
-```
+US dates
 
-# US Herbarium Data
-## 1. US- Merge with POH table
-
-
-```{r}
-#need to split string to get rid of "filed as" portion of taxon name
-US$TaxonName <- str_extract(US$Taxonomic.Name..Filed.As...Identified.By...Identification.Date., "[^:]+")
-#need to remove author
-US$TaxonName <- unlist(lapply(US$TaxonName, remove.authors))
-```
-
-```{r}
-temp <- merge(POH_taxon, US,  by.x = "scientificName", by.y = "TaxonName", all.x = FALSE, all.y = TRUE)
-temp <- subset(temp, is.na(temp$taxonID))
-occ <- nrow(temp)
-tax <- length(unique(temp$scientificName))
-print(paste0("lost ", occ , " occurrences represented by ", tax, " unique values in the taxa names field"))
-```
-
-
-```{r}
-US<- merge(POH_taxon, US,  by.x = "scientificName", by.y = "TaxonName", all.x = FALSE, all.y = FALSE)
-# but still want to export mismatches
-write.csv(temp, file = "UStaxa_Not_in_POH_table_12102020.csv", row.names = FALSE)
-```
-
-
-## 2. US- Data Cleanup
- very little lat lon data in here
- Standardizing dates:
+Standardizing dates:
 ```{r}
 # get rid of inaccurrate seasons
 US$Date.Collected <- gsub("Winter ", "", US$Date.Collected)
@@ -508,128 +764,11 @@ US
 dateparsed
 ```
 
+GBIF dates
 
-## 3. US- Standardize column names and select the ones we want
+
+standardize dates
 ```{r}
-# new_name = old_name
-US <- US %>% 
-  dplyr::rename(islandGroup = Archipelago, catalogNumber = Barcode, otherCatalogNumbers=Catalog.Number, decimalLatitude = Centroid.Latitude, decimalLongitude = Centroid.Longitude, recordNumber = Collection.Number, fieldNotes = Collection.Remarks, recordedBy = Collector.s., country = Country, isCultivated = Cultivated, eventDate = Date.Collected, county = District.County, minimumElevationInMeters =Elevation..m., island =Island.Name, habitat = Microhabitat.Description, locality=Precise.Locality,  stateProvince = Province.State, taxonRemarks = Taxonomy.Remarks) %>% dplyr::select(dplyr::one_of(Allfields))
+GBIF_pres_spec$eventDate <- lubridate::ymd_hms(GBIF_pres_spec$eventDate)
+GBIF_pres_spec$eventDate <- gsub(" UTC", "", GBIF_pres_spec$eventDate)
 ```
-
-## 4. Collate herbarium data into a single dataframe
-
- Create empty dataframe with these columns
-```{r}
-combinedDF <-  setNames(data.frame(matrix(ncol = length(Allfields), nrow = 0)), Allfields)
-```
-```{r}
-#creating the correct source data for each
-BISH$source <- "BISH_database"
-PTBG$source <- "PTBG_database"
-US$source <- "PTBG_database"
-```
-Combine
-```{r}
-combinedDF <- plyr::rbind.fill(combinedDF, BISH, PTBG, US, GBIF_pres_spec)
-```
-
-## 5. Remove Duplicates
-Removes obvious duplicates, BISH should be kept because it's the first in the dataframe
-```{r}
-deduped_combinedDF <-distinct(combinedDF, locality, eventDate, recordNumber, scientificName, .keep_all = TRUE)
-```
-```{r}
-#How many duplicates did we remove?
-nrow(combinedDF) - nrow(deduped_combinedDF)
-```
-assign UUID to make later merges easier
-```{r}
-deduped_combinedDF$UUID <- random_id(n = nrow(deduped_combinedDF), bytes = 16, use_openssl = TRUE)
-```
-
-## 6. Standardize the spelling of island names
-Only care about the main islands for now
-
-```{r}
-#remove the term " island"
-deduped_combinedDF$island <- gsub(" island", "", deduped_combinedDF$island)
-deduped_combinedDF$island <- gsub(" Island", "", deduped_combinedDF$island)
-#removing the punctuation
-deduped_combinedDF$island <- gsub("`", "", deduped_combinedDF$island)
-deduped_combinedDF$island <- gsub("'", "", deduped_combinedDF$island)
-deduped_combinedDF$island <- gsub("&", "and", deduped_combinedDF$island)
-# only first letter upper case
-deduped_combinedDF$island <- str_to_title(deduped_combinedDF$island)
-# deal with the unknown islands
-deduped_combinedDF$island <- gsub('Sandwichs', "", deduped_combinedDF$island)
-deduped_combinedDF$island <- gsub('Sand', "Oahu", deduped_combinedDF$island)
-deduped_combinedDF$island <- gsub("Unknown", "" , deduped_combinedDF$island)
-unique(deduped_combinedDF$island)
-```
-
-
-## 7. Remove bad points by seeing which fall in the ocean.
-```{r}
-DF <- deduped_combinedDF %>% mutate_all(na_if,"")
-
-nocoords <- subset(DF, is.na(decimalLatitude))
-hascoords <- subset(DF, !is.na(decimalLatitude))
-```
-How many have coordinates?
-```{r}
-nrow(hascoords)
-```
-```{r}
-oo <- coord_incomplete(hascoords, lat = "decimalLatitude", lon = "decimalLongitude", drop = TRUE)
-oo <- coord_imprecise (oo, which = "both", lat = "decimalLatitude", lon = "decimalLongitude", drop = TRUE)
-oo <- coord_unlikely (oo, lat = "decimalLatitude", lon = "decimalLongitude", drop = TRUE)
-oo$CleanCoordinates <- "yes"
-oo <- oo %>% dplyr::select(UUID, CleanCoordinates)
-hascoords <- merge(hascoords, oo, by="UUID", all.x = TRUE, all.y = FALSE)
-```
-
-
-```{r}
-hascoords_sub <- subset(hascoords, CleanCoordinates == "yes")
-hascoords_sub <- sf::st_as_sf(hascoords_sub, coords = c("decimalLongitude", "decimalLatitude"), crs = 4326)
-
-hascoords_sub <- st_join(hascoords_sub, islandpolys, join = st_intersects,  left = TRUE )
-```
-```{r}
-hascoords_sub_deoceanized <- subset(as.data.frame(hascoords_sub), !is.na(hascoords_sub$isle))
-hascoords_sub_deoceanized$CleanCoordinates_not_ocean <- "yes"
-hascoords_sub_deoceanized
-```
-replace island Nas with values from shapefile "isle" column
-```{r}
-hascoords_sub_deoceanized$island <- hascoords_sub_deoceanized$isle
-hascoords_sub_deoceanized$island <- gsub("kahoolawe", "Kahoolawe", hascoords_sub_deoceanized$island)
-```
-
-merge deoceanized column back into main dataframe
-```{r}
-# mergin back with orginal data.frame
-ee <- hascoords_sub_deoceanized %>% dplyr::select(UUID, CleanCoordinates_not_ocean)
-finalDF <- merge(deduped_combinedDF, ee, by="UUID", all.x = TRUE, all.y = FALSE)
-finalDF
-```
-replace lat lons with NAs if their point isn't clean and landing on land
-
-```{r}
-nicecoords <- subset(finalDF, CleanCoordinates_not_ocean == "yes")
-notnicecoords <- subset(finalDF, is.na(CleanCoordinates_not_ocean))
-notnicecoords$decimalLatitude <- NA
-notnicecoords$decimalLongitude <- NA
-#rbind back together
-finalDF <- rbind(nicecoords,notnicecoords)
-```
-
-```{r}
-finalDF <- finalDF %>% dplyr::select(Allfields)
-write.csv(finalDF, file = "All_herbaria_COMPILED_12142020.csv", row.names = FALSE)
-finalDF
-```
-
-
-
-FINISH!
