@@ -1,6 +1,6 @@
 ---
 title: "POH Merge Data from Multiple Herbaria Pipeline"
-author: "Kelsey Brock"
+author: "Sam's version"
 date: "12/9/2020"
 output: html_document
 ---
