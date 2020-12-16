@@ -26,9 +26,9 @@ TO-DO list:
 5) Clean collector numbers so we can find duplicates easier and also find duplicates with different IDs
 6) PRIORITY! Reconcile discarded occurrences with POH taxon list - do some need to be added to the list?
 7) need to make sure csv files of non-merging occurrence records are being exported so that we can consider adding them to taxon table
-8) How are we going to deal with loccurrence UUID and version updates? We want UUIDs for incorporated occurrences to be static, so we need to code it so that only new occurrence records get a new ID.
+8) How are we going to deal with occurrence UUID and version updates? We want UUIDs for incorporated occurrences to be static, so we need to code it so that only new occurrence records get a new ID.
 9) Maybe we should remove duplicates at the end once dates and GPS are in standard formats - that should help thin it more.
-10) some of the dates are entered stupidly (e.g. Sep-37 <- how am I supposed to know what century?) Should we add a verbatimDate to the schema so that someone can interpret the date based on collector?
+
 
 
 ```{r, }
@@ -65,9 +65,9 @@ POH_taxon <- read.csv("POH_TAXA_12_3_2020.csv", header=T, sep=',', stringsAsFact
 BISH <- read.csv("dbo_Specimens1a.csv", header=T, sep=',', stringsAsFactors=F)
 PTBG <- read.csv("NTBG_HerbariumSearchExport_20201209.csv", header=T, sep=',', stringsAsFactors=F)
 US <- read.csv("nmnhsearch-20201210005846.csv", header=T, sep=',', stringsAsFactors=F)
-GBIF <- read.csv("occurrence.csv", header=T, sep=',', stringsAsFactors=F) %>% dplyr::rename(TaxonomicName = scientificName) %>% dplyr::select(-c(	taxonID, kingdom,	phylum,	class,	order,	family,	genus, vernacularName,))
+GBIF <- read.csv("occurrence.csv", header=T, sep=',', stringsAsFactors=F) %>% dplyr::rename(TaxonomicName = scientificName) %>% dplyr::select(-c(	taxonID, kingdom,	phylum,	class,	order,	family,	genus, vernacularName))
 ## subset to remove human occurrences (we'll deal with those later)
-GBIF_pres_spec <- subset(GBIF, GBIF$basisOfRecord == "PRESERVED_SPECIMEN")
+  GBIF_pres_spec <- subset(GBIF, GBIF$basisOfRecord == "PRESERVED_SPECIMEN")
 
 #This polygon is only for the main hawaiian islands - we should build another that includes the NW islands
 islandpolys <- st_read("Coastline.shp")
@@ -509,7 +509,6 @@ finalDF$eventDate <- gsub("and.*", "", finalDF$eventDate)
 finalDF$eventDate <- str_trim(finalDF$eventDate, side = "both")
 ```
 
-
 ```{r}
 # Fourth, we need to divide the dataset into different date formats so we can apply different treatments to get to the right format
 # lets assign a column that looks at the number of characters
@@ -547,7 +546,6 @@ eightchars$eventDate <- stringi::stri_replace_last_fixed(eightchars$eventDate, '
 #done!
 ```
 
-
 ```{r}
 #fix nine-eleven chars
 # gotta subset cuz there is two types here
@@ -567,7 +565,74 @@ ninepluschars <- rbind(ninepluschars_alpha, ninepluschars_other)
 finalDF <- rbind(justyear, eightchars, ninepluschars)
 ```
 
+## 9. Assign a cultivated, non,  or unknown status
+
+
 ```{r}
-finalDF <- finalDF %>% dplyr::select(Allfields)
+finalDF$isCultivated <- gsub("[?]", "", finalDF$isCultivated)
+finalDF$isCultivated <- gsub(-1, "", finalDF$isCultivated)
+finalDF$isCultivated <- gsub(0, "", finalDF$isCultivated)
+finalDF$isCultivated <- gsub(1, "Cultivated", finalDF$isCultivated)
+finalDF$isCultivated <- gsub("Yes", "Cultivated", finalDF$isCultivated)
+
+finalDF_cult <- subset(finalDF, isCultivated == "Cultivated")
+finalDF_nocult <- subset(finalDF, isCultivated != "Cultivated")
+```
+
+```{r}
+#look for "cultivate"
+
+finalDF_nocult$cultivate <- ifelse(grepl("cultivate", finalDF_nocult$habitat, ignore.case = TRUE) | 
+                           grepl("cultivate", finalDF_nocult$occurrenceRemarks, ignore.case = TRUE) |
+                           grepl("cultivate", finalDF_nocult$associatedTaxa, ignore.case = TRUE) |
+                           grepl("cultivate", finalDF_nocult$locality, ignore.case = TRUE) , "Cultivated", NA)
+
+```
+
+```{r}
+#look for "naturalize"
+
+finalDF_nocult$naturalize <- ifelse(grepl("naturalize", finalDF_nocult$habitat, ignore.case = TRUE) | 
+                           grepl("naturalize", finalDF_nocult$occurrenceRemarks, ignore.case = TRUE) |
+                           grepl("naturalize", finalDF_nocult$associatedTaxa, ignore.case = TRUE) |
+                           grepl("naturalize", finalDF_nocult$locality, ignore.case = TRUE) , "Not Cultivated", NA)
+```
+
+```{r}
+#look for "escape"
+
+finalDF_nocult$escape <- ifelse(grepl("escape", finalDF_nocult$habitat, ignore.case = TRUE) | 
+                           grepl("escape", finalDF_nocult$occurrenceRemarks, ignore.case = TRUE) |
+                           grepl("escape", finalDF_nocult$associatedTaxa, ignore.case = TRUE) |
+                           grepl("escape", finalDF_nocult$locality, ignore.case = TRUE) , "Not Cultivated", NA)
+
+```
+
+```{r}
+#look for "adventiv"
+
+finalDF_nocult$adventive <- ifelse(grepl("adventiv", finalDF_nocult$habitat, ignore.case = TRUE) | 
+                           grepl("adventiv", finalDF_nocult$occurrenceRemarks, ignore.case = TRUE) |
+                           grepl("adventiv", finalDF_nocult$associatedTaxa, ignore.case = TRUE) |
+                           grepl("adventiv", finalDF_nocult$locality, ignore.case = TRUE) , "Not Cultivated", NA)
+
+```
+
+```{r}
+#colalescing the columns
+
+finalDF_nocult$isCultivated <- dplyr::coalesce(finalDF_nocult$naturalize, finalDF_nocult$escape, finalDF_nocult$adventive, finalDF_nocult$cultivate)
+
+```
+```{r}
+#merge data back together
+finalDF_nocult <- finalDF_nocult %>% dplyr::select(Allfields)
+finalDF_cult <- finalDF_cult %>% dplyr::select(Allfields)
+finalDF <- rbind(finalDF_cult, finalDF_nocult)
+```
+```{r}
+
 write.csv(finalDF, file = "All_herbaria_COMPILED_12142020.csv", row.names = FALSE)
 ```
+
+
