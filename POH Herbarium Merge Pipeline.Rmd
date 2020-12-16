@@ -28,6 +28,7 @@ TO-DO list:
 7) need to make sure csv files of non-merging occurrence records are being exported so that we can consider adding them to taxon table
 8) How are we going to deal with loccurrence UUID and version updates? We want UUIDs for incorporated occurrences to be static, so we need to code it so that only new occurrence records get a new ID.
 9) Maybe we should remove duplicates at the end once dates and GPS are in standard formats - that should help thin it more.
+10) some of the dates are entered stupidly (e.g. Sep-37 <- how am I supposed to know what century?) Should we add a verbatimDate to the schema so that someone can interpret the date based on collector?
 
 
 ```{r, }
@@ -55,6 +56,7 @@ Allfields <- unique(c(Taxonfields, Locationfields, Occurrencefields ))
 ```
 
 ## Read in the Data Sets
+IMPORTANT!! Before reading in csvs, make sure excel hasn't converted the date format! go in and make sure the date cells are formatted as YYYY-mm-dd
 ```{r}
 #Taxon Table for merging
 POH_taxon <- read.csv("POH_TAXA_12_3_2020.csv", header=T, sep=',', stringsAsFactors=F) %>% dplyr::select(taxonID, IPNIID, scientificName, scientificNameAuthorship, kingdom,	phylum,	class,	order,	family,	genus, vernacularName, BISH_TaxonID)
@@ -70,6 +72,7 @@ GBIF_pres_spec <- subset(GBIF, GBIF$basisOfRecord == "PRESERVED_SPECIMEN")
 #This polygon is only for the main hawaiian islands - we should build another that includes the NW islands
 islandpolys <- st_read("Coastline.shp")
 ```
+
 
 ###### Where to get updates of these data sets:
 BISH <- download from BISH Specimen Database, joined with Tim's taxon table to get ID number
@@ -225,24 +228,25 @@ BISH_UTMs <- rbind(BISH_UTMs_BI, BISH_UTMs_west)
 # first renaming everything to Darwincore
 #then extractig the fields we want
 BISH_nocoords <- BISH_nocoords %>% 
-  dplyr::rename(islandGroup = DATASET, recordedBy = COLLECTOR, recordNumber = COLLNUMBER, locality = LOCALITY, eventDate = COLLDATE, habitat = HABITAT, stateProvince = STATEPROV, island = ISCO, minimumElevationInMeters = VerbatimElevation, isCultivated = CULTIVATED, cultivar = CVAR,  occurrenceRemarks = PLDESCR, country = COUNTRY, fieldNotes = COMMENT, catalogNumber = BarcodeID, otherCatalogNumbers = TaxonNameID) %>% 
+  dplyr::rename(islandGroup = DATASET, recordedBy = COLLECTOR, recordNumber = COLLNUMBER, locality = LOCALITY, eventDate = Date2, habitat = HABITAT, stateProvince = STATEPROV, island = ISCO, minimumElevationInMeters = VerbatimElevation, isCultivated = CULTIVATED, cultivar = CVAR,  occurrenceRemarks = PLDESCR, country = COUNTRY, fieldNotes = COMMENT, catalogNumber = BarcodeID, otherCatalogNumbers = TaxonNameID) %>% 
   dplyr::select(dplyr::one_of(Allfields))
 
 BISH_declat <- BISH_declat %>% 
-  dplyr::rename(islandGroup = DATASET, recordedBy = COLLECTOR, recordNumber = COLLNUMBER, locality = LOCALITY, eventDate = COLLDATE, habitat = HABITAT, stateProvince = STATEPROV, island = ISCO, minimumElevationInMeters = VerbatimElevation, isCultivated = CULTIVATED, cultivar = CVAR,  occurrenceRemarks = PLDESCR, country = COUNTRY, fieldNotes = COMMENT, catalogNumber = BarcodeID, otherCatalogNumbers = TaxonNameID) %>% 
+  dplyr::rename(islandGroup = DATASET, recordedBy = COLLECTOR, recordNumber = COLLNUMBER, locality = LOCALITY, eventDate = Date2, habitat = HABITAT, stateProvince = STATEPROV, island = ISCO, minimumElevationInMeters = VerbatimElevation, isCultivated = CULTIVATED, cultivar = CVAR,  occurrenceRemarks = PLDESCR, country = COUNTRY, fieldNotes = COMMENT, catalogNumber = BarcodeID, otherCatalogNumbers = TaxonNameID) %>% 
   dplyr::select(dplyr::one_of(Allfields))
 
 BISH_minsec <- BISH_minsec %>% 
-  dplyr::rename(islandGroup = DATASET, recordedBy = COLLECTOR, recordNumber = COLLNUMBER, locality = LOCALITY, eventDate = COLLDATE, habitat = HABITAT, stateProvince = STATEPROV, island = ISCO, minimumElevationInMeters = VerbatimElevation, isCultivated = CULTIVATED, cultivar = CVAR,  occurrenceRemarks = PLDESCR, country = COUNTRY, fieldNotes = COMMENT, catalogNumber = BarcodeID, otherCatalogNumbers = TaxonNameID) %>% 
+  dplyr::rename(islandGroup = DATASET, recordedBy = COLLECTOR, recordNumber = COLLNUMBER, locality = LOCALITY, eventDate = Date2, habitat = HABITAT, stateProvince = STATEPROV, island = ISCO, minimumElevationInMeters = VerbatimElevation, isCultivated = CULTIVATED, cultivar = CVAR,  occurrenceRemarks = PLDESCR, country = COUNTRY, fieldNotes = COMMENT, catalogNumber = BarcodeID, otherCatalogNumbers = TaxonNameID) %>% 
   dplyr::select(dplyr::one_of(Allfields))
 
 BISH_UTMs <- BISH_UTMs %>% 
-  dplyr::rename(islandGroup = DATASET, recordedBy = COLLECTOR, recordNumber = COLLNUMBER, locality = LOCALITY, eventDate = COLLDATE, habitat = HABITAT, stateProvince = STATEPROV, island = ISCO, minimumElevationInMeters = VerbatimElevation, isCultivated = CULTIVATED, cultivar = CVAR,  occurrenceRemarks = PLDESCR, country = COUNTRY, fieldNotes = COMMENT, catalogNumber = BarcodeID, otherCatalogNumbers = TaxonNameID) %>% 
+  dplyr::rename(islandGroup = DATASET, recordedBy = COLLECTOR, recordNumber = COLLNUMBER, locality = LOCALITY, eventDate = Date2, habitat = HABITAT, stateProvince = STATEPROV, island = ISCO, minimumElevationInMeters = VerbatimElevation, isCultivated = CULTIVATED, cultivar = CVAR,  occurrenceRemarks = PLDESCR, country = COUNTRY, fieldNotes = COMMENT, catalogNumber = BarcodeID, otherCatalogNumbers = TaxonNameID) %>% 
   dplyr::select(dplyr::one_of(Allfields))
 
 BISH <- rbind(BISH_nocoords, BISH_declat, BISH_minsec, BISH_UTMs)
 nrow(BISH)
 ```
+
 
 # PTBG Herbarium Data
 ## 1. PTBG- Merge with POH table
@@ -479,35 +483,34 @@ notnicecoords$decimalLongitude <- NA
 finalDF <- rbind(nicecoords,notnicecoords)
 ```
 
-```{r}
-finalDF <- finalDF %>% dplyr::select(Allfields)
-write.csv(finalDF, file = "All_herbaria_COMPILED_12142020.csv", row.names = FALSE)
-finalDF
-```
 
 ## 8. Standardize Dates into Year-Month-Day format
 
 
 ```{r}
 # First, get weird of weird words (e.g. "Summer" is not helpful, we just want the year in this case)
-finalDF$eventDate <- gsub("Winter ", "", finalDF$eventDate)
-finalDF$eventDate <- gsub("Summer ", "", finalDF$eventDate)
-finalDF$eventDate <- gsub("Spring ", "", finalDF$eventDate)
-finalDF$eventDate <- gsub("Late ", "", finalDF$eventDate)
-finalDF$eventDate <- gsub("ca ", "", finalDF$eventDate)
-finalDF$eventDate <- gsub("ca. ", "", finalDF$eventDate)
-finalDF$eventDate <- gsub("[.]", "", finalDF$eventDate)
+finalDF$eventDate <- gsub("Winter", "", finalDF$eventDate)
+finalDF$eventDate <- gsub("Summer", "", finalDF$eventDate)
+finalDF$eventDate <- gsub("Spring", "", finalDF$eventDate)
+finalDF$eventDate <- gsub("Late", "", finalDF$eventDate)
+finalDF$eventDate <- gsub("ca", "", finalDF$eventDate)
+finalDF$eventDate <- gsub("ca.", "", finalDF$eventDate)
+finalDF$eventDate <- gsub("[.]", " ", finalDF$eventDate)
+finalDF$eventDate <- gsub("[[?]]", "", finalDF$eventDate)
+finalDF$eventDate <- gsub("T00:00:00", "", finalDF$eventDate)
 
 # Second, we'll get rid of ranges by taking the first date mentioned (in all cases in the dataset,this only makes a few days of difference)
 finalDF$eventDate <- gsub("to.*", "", finalDF$eventDate)
 finalDF$eventDate <- gsub("or.*", "", finalDF$eventDate)
 finalDF$eventDate <- gsub("[(].*", "", finalDF$eventDate)
-finalDF$eventDate <- gsub(".*-", "", finalDF$eventDate)
+finalDF$eventDate <- gsub("and.*", "", finalDF$eventDate)
 
 #third, we'll trim the whitespaces off the end
-
 finalDF$eventDate <- str_trim(finalDF$eventDate, side = "both")
+```
 
+
+```{r}
 # Fourth, we need to divide the dataset into different date formats so we can apply different treatments to get to the right format
 # lets assign a column that looks at the number of characters
 finalDF$nchar_temp <- nchar(finalDF$eventDate)
@@ -515,260 +518,56 @@ unique(finalDF$nchar_temp)
 ```
 ```{r}
 #divide into different groups
-nodate <- subset(finalDF, nchar_temp >= 0 & nchar_temp < 4)
-justyear <- subset(finalDF, nchar_temp >= 4 & nchar_temp <= 7)
+justyear <- subset(finalDF, nchar_temp >= 0 & nchar_temp <= 7)
 eightchars <- subset(finalDF, nchar_temp == 8)
-ninetenchars <- subset(finalDF, nchar_temp >= 9 & nchar_temp <= 10)
-tenelevchars <- subset(finalDF, nchar_temp >= 11 & nchar_temp <= 12)
-lotschars <- subset(finalDF, nchar_temp > 12)
+ninepluschars <- subset(finalDF, nchar_temp >= 9)
 ```
 
 ```{r}
-#fix nodate
+#justyear
 # remove any month only entries
-regexp_alpha <- "[[:alpha:]]+"
-nodate$eventDate <- gsub(regexp_alpha, "", nodate$eventDate)
-# this will assume that anything that's two digits (e.g. "74") means 1974. but not for anything that can be confused with the 2000s.
-
-# What's the last do digits of the current year??
-currentyear <- 21 #<- fill this in!!
-nodate$eventDate <- ifelse(nodate$eventDate > currentyear, paste0(19, nodate$eventDate), "no date" )
-# convert to format
-nodate$eventDate <- lubridate::parse_date_time(nodate$eventDate, "%Y")
-nodate$eventDate <- gsub( "-01-01", "-00-00", nodate$eventDate)
-#done!
-# we'll get a " many failed to parse" here, and that's okay
-```
-```{r}
-#fix just year
-# get rid of characters
 regexp_alpha <- "[[:alpha:]]+"
 regexp_symbols <- "[[:punct:][:blank:]]+"
 justyear$eventDate <- gsub(regexp_alpha, "", justyear$eventDate)
 justyear$eventDate <- gsub(regexp_symbols, "", justyear$eventDate)
+# this will assume that anything that's two digits (e.g. "74") means 1974. but not for anything that can be confused with the 2000s.
 
 # convert to format
 justyear$eventDate <- lubridate::parse_date_time(justyear$eventDate, "%Y")
 justyear$eventDate <- gsub( "-01-01", "-00-00", justyear$eventDate)
+#done!
+# we'll get a " many failed to parse" here, and that's okay cuz those strings were missing
+```
 
+```{r}
+# fix eightchars
+eightchars$eventDate <- lubridate::parse_date_time(eightchars$eventDate, "%m-%Y")
+#since only month and year were assigned, we're going to assign a day of NA
+eightchars$eventDate <- stringi::stri_replace_last_fixed(eightchars$eventDate, '-01 UTC', '-00')
 #done!
 ```
 
+
 ```{r}
-#fix eight chars
+#fix nine-eleven chars
 # gotta subset cuz there is two types here
-eightchars_my <- grepl.sub(data = eightchars, pattern = regexp_alpha, Var = "eventDate", keep.found = TRUE)
-eightchars_slash <- grepl.sub(data = eightchars, pattern = regexp_alpha, Var = "eventDate", keep.found = FALSE)
-
-# fixing eightchars_my first
-eightchars_my$eventDate <- lubridate::parse_date_time(eightchars_my$eventDate, "%m-%Y")
-#since only month and year were assigned, we're going to assign a day of NA
-eightchars_my$eventDate <- stringi::stri_replace_last_fixed(eightchars_my$eventDate, '-01', '-00')
-# DONE!
-
-# fixing eightchars_slash second
-# get rid of characters
 regexp_alpha <- "[[:alpha:]]+"
-eightchars_slash$eventDate <- gsub(regexp_alpha, "", eightchars_slash$eventDate)
+ninepluschars_alpha <- grepl.sub(data = ninepluschars, pattern = regexp_alpha, Var = "eventDate", keep.found = TRUE)
+ninepluschars_other <- grepl.sub(data = ninepluschars, pattern = regexp_alpha, Var = "eventDate", keep.found = FALSE)
 
-#  I'll assume mm/dd/yyyy.
-eightchars_slash$eventDate <- lubridate::mdy(eightchars_slash$eventDate)
+ninepluschars_alpha$eventDate <- lubridate::dmy(ninepluschars_alpha$eventDate)
 
-#bind together again
-eightchars <- rbind(eightchars_my, eightchars_slash)
-```
-```{r}
-# fix ninetenchars
+ninepluschars_other$eventDate <- lubridate::ymd(ninepluschars_other$eventDate)
 
-ninetenchars_other <- grepl.sub(data = ninetenchars, pattern = regexp_alpha, Var = "eventDate", keep.found = TRUE)
-ninetenchars_slash <- grepl.sub(data = ninetenchars, pattern = regexp_alpha, Var = "eventDate", keep.found = FALSE)
-
-# fixing ninetenchars_other first
-ninetenchars_other$eventDate <- lubridate::dmy(ninetenchars_other$eventDate)
-# DONE!
-
-# fixing ninetenchars_slash second
-# get rid of characters
-regexp_alpha <- "[[:alpha:]]+"
-ninetenchars_slash$eventDate <- gsub(regexp_alpha, "", ninetenchars_slash$eventDate)
-
-#  I'll assume mm/dd/yyyy.
-ninetenchars_slash$eventDate <- lubridate::mdy(ninetenchars_slash$eventDate)
-
-#bind together again
-ninetenchars <- rbind(ninetenchars_other, ninetenchars_slash)
-```
-```{r}
-# fix tenelevchars
-regexp_alpha <- "[[:alpha:]]+"
-tenelevchars_alpha <- grepl.sub(data = tenelevchars, pattern = regexp_alpha, Var = "eventDate", keep.found = TRUE)
-tenelevchars_slash <- grepl.sub(data = ninetenchars, pattern = regexp_alpha, Var = "eventDate", keep.found = FALSE)
-
-#tenelevchars$eventDate <- lubridate::dmy(tenelevchars$eventDate)
+ninepluschars <- rbind(ninepluschars_alpha, ninepluschars_other)
 
 ```
 
 ```{r}
-unique(tenelevchars_alpha$eventDate)
-```
-
-
-
-
-
-
-OLD STUFF
-```{r}
-# get rid of inaccurrate seasons
-BISH$eventDate <- gsub("Winter ", "", BISH$eventDate)
-BISH$eventDate <- gsub("Summer ", "", BISH$eventDate)
-BISH$eventDate <- gsub("Spring ", "", BISH$eventDate)
-BISH$eventDate <- gsub("Late ", "", BISH$eventDate)
-BISH$eventDate <- gsub("ca ", "", BISH$eventDate)
-BISH$eventDate <- gsub("ca. ", "", BISH$eventDate)
-BISH$eventDate <- gsub("[.]", "", BISH$eventDate)
-# get rid of ranges, we'll just take the latest date, it looks like they're only a few days apart anway
-BISH$eventDate <- gsub(".*-", "", BISH$eventDate)
-# create a temp date just so we can see who the trouble makers are
-BISH$tempdate <- lubridate::dmy(BISH$eventDate)
-# subset into parsed (yay) and unparsed (needs more work)
-dateparsed <- subset(BISH, !is.na(BISH$tempdate))
-dateunparsed <- subset(BISH, is.na(BISH$tempdate))
-# parsed is good to go, so we can reassign dates in standard format here
-dateparsed$eventDate <- lubridate::dmy(dateparsed$eventDate)
-```
-```{r}
-#deal with the unparsed ones
-dateunparsed$tempdate <- lubridate::parse_date_time(dateunparsed$eventDate, "%m-%Y")
-dateunparsed_my <- subset(dateunparsed, !is.na(dateunparsed$tempdate))
-#worked for these, so let's assign it to eventDate
-dateunparsed_my$eventDate <- lubridate::parse_date_time(dateunparsed_my$eventDate, "%m-%Y")
-#since only month and year were assigned, we're going to assign a day of NA
-dateunparsed_my$eventDate <- stringi::stri_replace_last_fixed(dateunparsed_my$eventDate, '-01 UTC', '-00')
-
-# but not for these, more work needed
-dateunparsed_y <- subset(dateunparsed, is.na(dateunparsed$tempdate))
-regexp1 <- "[[:alpha:]]+"
-regexp2 <- "[[:punct:][:blank:]]+"
-dateunparsed_y$eventDate <- gsub(regexp1, "", dateunparsed_y$eventDate)
-dateunparsed_y$eventDate <- gsub(regexp2, "", dateunparsed_y$eventDate)
-dateunparsed_y$eventDate <- lubridate::parse_date_time(dateunparsed_y$eventDate, "%Y")
-dateunparsed_y$eventDate <- stringi::stri_replace_last_fixed(dateunparsed_y$eventDate, '-01-01 UTC', '-00-00')
-```
-```{r}
-#merging back together and removing the tempdate column
-BISH <- rbind(dateparsed, dateunparsed_my, dateunparsed_y) %>% dplyr::select(-c(tempdate))
-BISH
-```
-
-PTBG dates
-Standardize date format
-```{r}
-# get rid of inaccurrate seasons
-PTBG$COLDATE <- gsub("Winter ", "", PTBG$COLDATE)
-PTBG$COLDATE <- gsub("Summer ", "", PTBG$COLDATE)
-PTBG$COLDATE <- gsub("Spring ", "", PTBG$COLDATE)
-PTBG$COLDATE <- gsub("Late ", "", PTBG$COLDATE)
-PTBG$COLDATE <- gsub("ca ", "", PTBG$COLDATE)
-PTBG$COLDATE <- gsub("ca. ", "", PTBG$COLDATE)
-PTBG$COLDATE <- gsub("[.]", "", PTBG$COLDATE)
-
-# create a temp date just so we can see who the trouble makers are
-PTBG$tempdate <- lubridate::dmy(PTBG$COLDATE)
-# subset into parsed (yay) and unparsed (needs more work)
-dateparsed <- subset(PTBG, !is.na(PTBG$tempdate))
-dateunparsed <- subset(PTBG, is.na(PTBG$tempdate))
-# parsed is good to go, so we can reassign dates in standard format here
-dateparsed$COLDATE <- lubridate::dmy(dateparsed$COLDATE)
-```
-Subset to treat different formats
-```{r}
-dateunparsed$tempdate <- lubridate::mdy(dateunparsed$COLDATE)
-dateunparsed_mdy <- subset(dateunparsed, !is.na(dateunparsed$tempdate) )
-dateunparsed_mdy$COLDATE <- lubridate::mdy(dateunparsed_mdy$COLDATE)
-dateunparsed_y <- subset(dateunparsed, is.na(dateunparsed$tempdate) )
-dateunparsed_y$COLDATE <- lubridate::ymd(dateunparsed_y$COLDATE)
-```
-combine again
-```{r}
-PTBG <- rbind(dateparsed, dateunparsed_mdy, dateunparsed_y ) %>% dplyr::select(-c(tempdate))
-PTBG$COLDATE <- gsub(" UTC", "", PTBG$COLDATE)
-```
-
-FINISH!
-
-
-US dates
-
-Standardizing dates:
-```{r}
-# get rid of inaccurrate seasons
-US$Date.Collected <- gsub("Winter ", "", US$Date.Collected)
-US$Date.Collected <- gsub("Summer ", "", US$Date.Collected)
-US$Date.Collected <- gsub("Spring ", "", US$Date.Collected)
-US$Date.Collected <- gsub("Late ", "", US$Date.Collected)
-US$Date.Collected <- gsub("ca ", "", US$Date.Collected)
-US$Date.Collected <- gsub("ca. ", "", US$Date.Collected)
-US$Date.Collected <- gsub("[.]", "", US$Date.Collected)
-# get rid of ranges, we'll just take the earliest date, it looks like they're only a few days apart anway
-US$Date.Collected <- gsub("to.*", "", US$Date.Collected)
-US$Date.Collected <- gsub("or.*", "", US$Date.Collected)
-US$Date.Collected <- gsub("[(].*", "", US$Date.Collected)
-# create a temp date just so we can see who the trouble makers are
-US$tempdate <- lubridate::dmy(US$Date.Collected)
-# subset into parsed (yay) and unparsed (needs more work)
-dateparsed <- subset(US, !is.na(US$tempdate))
-dateunparsed <- subset(US, is.na(US$tempdate))
-# parsed is good to go, so we can reassign dates in standard format here
-dateparsed$Date.Collected <- as.factor(lubridate::dmy(dateparsed$Date.Collected))
-
-dateparsed <- dateparsed %>% dplyr::select(-c(tempdate))
-```
-```{r}
-#deal with the unparsed ones
-dateunparsed$tempdate <- lubridate::parse_date_time(dateunparsed$Date.Collected, "%m-%Y")
-dateunparsed_my <- subset(dateunparsed, !is.na(dateunparsed$tempdate))
-#worked for these, so let's assign it to Date.Collected
-dateunparsed_my$Date.Collected <- lubridate::parse_date_time(dateunparsed_my$Date.Collected, "%m-%Y")
-#since only month and year were assigned, we're going to assign a day of NA
-dateunparsed_my$Date.Collected <- stringi::stri_replace_last_fixed(dateunparsed_my$Date.Collected, '-01 UTC', '-00')
-
-dateunparsed_my <- as.factor(dateunparsed_my %>% dplyr::select(-c(tempdate)))
-
-# but not for these, more work needed
-dateunparsed_other <- subset(dateunparsed, is.na(dateunparsed$tempdate))
-```
-```{r}
-dateunparsed_other$tempdate <- lubridate::parse_date_time(dateunparsed_other$Date.Collected,"%Y")
-dateunparsed_other_other <- subset(dateunparsed_other, is.na(dateunparsed_other$tempdate))
-dateunparsed_other_y <- subset(dateunparsed_other, !is.na(dateunparsed_other$tempdate))
-
-dateunparsed_other_y$Date.Collected <- as.factor(lubridate::parse_date_time(dateunparsed_other_y$Date.Collected, "%Y"))
-dateunparsed_other_y <- dateunparsed_other_y %>% dplyr::select(-c(tempdate))
-
+finalDF <- rbind(justyear, eightchars, ninepluschars)
 ```
 
 ```{r}
-dateunparsed_other_other$Date.Collected <- paste0("01-", dateunparsed_other_other$Date.Collected)
-dateunparsed_other_other$Date.Collected <- as.factor(lubridate::dym(dateunparsed_other_other$Date.Collected))
-dateunparsed_other_other$Date.Collected <- stringi::stri_replace_last_fixed(dateunparsed_other_other$Date.Collected, '-01', '-00')
-dateunparsed_other_other <- dateunparsed_other_other %>% dplyr::select(-c(tempdate))
-```
-```{r}
-#merging back together and removing the tempdate column
-US <- rbind(dateparsed, dateunparsed_my, dateunparsed_other_y, dateunparsed_other_other) 
-US$Date.Collected <- gsub(" UTC", "", US$Date.Collected)
-US
-```
-```{r}
-dateparsed
-```
-
-GBIF dates
-
-
-standardize dates
-```{r}
-GBIF_pres_spec$eventDate <- lubridate::ymd_hms(GBIF_pres_spec$eventDate)
-GBIF_pres_spec$eventDate <- gsub(" UTC", "", GBIF_pres_spec$eventDate)
+finalDF <- finalDF %>% dplyr::select(Allfields)
+write.csv(finalDF, file = "All_herbaria_COMPILED_12142020.csv", row.names = FALSE)
 ```
