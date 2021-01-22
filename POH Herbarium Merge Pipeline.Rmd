@@ -50,11 +50,11 @@ p_load("dplyr",  "ggplot2", "taxize", "sp", "sf", "proj4", "data.table", "string
 These are DarwinCore column names that are currently in the POH schema
 ```{r}
 
-Taxonfields <- c( "taxonID", "IPNIID", "parentNameUsageID", "scientificName", "scientificNameAuthorship", "namePublishedIn", "originalNameUsage", "taxonRank", "kingdom", "phylum", "class", "order", "family", "genus", "subgenus", "specificEpithet", "vernacularName", "taxonRemarks")
+Taxonfields <- c( "taxonID", "acceptedNameUsageID", "IPNIID", "parentNameUsageID", "scientificName", "scientificNameAuthorship", "namePublishedIn", "originalNameUsage", "taxonRank", "kingdom", "phylum", "class", "order", "family", "genus", "subgenus", "specificEpithet", "vernacularName", "taxonRemarks")
 
 Locationfields <- c("locationID", "higherGeographyID", "locationType", "continent", "waterbody", "islandGroup", "island", "country", "countrycode", "stateProvince", "county", "municipality", "locality", "minimumElevationInMeters", "maximumElevationInMeters", "decimalLatitude", "decimalLongitude", "geodeticDatum", "coordinateUncertaintyInMeters", "footprintWKT", "footprintSRS", "locationRemarks" )
 
-Occurrencefields <- c("occurrenceID", "locationID", "basisOfRecord", "catalogNumber", "recordNumber", "recordedBy", "individualCount", "organismQuantityProperty", "organismQuantityTypeProperty", "sex", "lifeStage", "reproductiveCondition", "behavior", "establishmentMeans", "occurrenceStatus", "preparations", "disposition", "associatedMedia", "associatedReferences", "associatedTaxa", "otherCatalogNumbers", "occurrenceRemarks", "fieldNumber", "eventDate", "eventTime", "habitat", "samplingProtocol", "fieldNotes", "watershedCount", "isCultivated", "source", "sourceIdentifier", "sourceURL")
+Occurrencefields <- c("occurrenceID", "taxonID", "locationID", "basisOfRecord", "catalogNumber", "recordNumber", "recordedBy", "individualCount", "organismQuantity", "organismQuantityType", "identifiedby", "identificationVerification", "sex", "lifeStage", "reproductiveCondition", "behavior", "establishmentMeans", "occurrenceStatus", "preparations", "disposition", "associatedMedia", "associatedReferences", "associatedTaxa", "otherCatalogNumbers", "occurrenceRemarks", "fieldNumber", "eventDate", "eventTime", "habitat", "samplingProtocol", "fieldNotes", "watershedCount", "isCultivated", "source", "sourceIdentifier", "sourceURL")
 
 Allfields <- unique(c(Taxonfields, Locationfields, Occurrencefields))
 ```
@@ -117,6 +117,9 @@ nrow(GBIF_pres_spec)
 ```
 ```{r}
 nrow(idigbio)
+```
+```{r}
+BISH
 ```
 
 # BISH Herbarium Data
@@ -271,19 +274,19 @@ BISH_UTMs <- rbind(BISH_UTMs_BI, BISH_UTMs_west)
 # first renaming everything to Darwincore
 #then extractig the fields we want
 BISH_nocoords <- BISH_nocoords %>% 
-  dplyr::rename(islandGroup = DATASET, recordedBy = COLLECTOR, recordNumber = COLLNUMBER, locality = LOCALITY, eventDate = COLLDATE, habitat = HABITAT, stateProvince = STATEPROV, island = ISCO, minimumElevationInMeters = VerbatimElevation, isCultivated = CULTIVATED, cultivar = CVAR,  occurrenceRemarks = PLDESCR, country = COUNTRY, fieldNotes = COMMENT, catalogNumber = IDNUMBER, otherCatalogNumbers = TaxonNameID) %>% 
+  dplyr::rename(islandGroup = DATASET, recordedBy = COLLECTOR, recordNumber = COLLNUMBER, locality = LOCALITY, eventDate = COLLDATE, habitat = HABITAT, stateProvince = STATEPROV, island = ISCO, minimumElevationInMeters = VerbatimElevation, isCultivated = CULTIVATED, cultivar = CVAR,  occurrenceRemarks = PLDESCR, country = COUNTRY, fieldNotes = COMMENT, catalogNumber = IDNUMBER, otherCatalogNumbers = TaxonNameID, identifiedby = DETERMINER, identificationVerification = VERIFIEDBY) %>% 
   dplyr::select(dplyr::any_of(Allfields))
 
 BISH_declat <- BISH_declat %>% 
-  dplyr::rename(islandGroup = DATASET, recordedBy = COLLECTOR, recordNumber = COLLNUMBER, locality = LOCALITY, eventDate = COLLDATE, habitat = HABITAT, stateProvince = STATEPROV, island = ISCO, minimumElevationInMeters = VerbatimElevation, isCultivated = CULTIVATED, cultivar = CVAR,  occurrenceRemarks = PLDESCR, country = COUNTRY, fieldNotes = COMMENT, catalogNumber = IDNUMBER, otherCatalogNumbers = TaxonNameID) %>% 
+  dplyr::rename(islandGroup = DATASET, recordedBy = COLLECTOR, recordNumber = COLLNUMBER, locality = LOCALITY, eventDate = COLLDATE, habitat = HABITAT, stateProvince = STATEPROV, island = ISCO, minimumElevationInMeters = VerbatimElevation, isCultivated = CULTIVATED, cultivar = CVAR,  occurrenceRemarks = PLDESCR, country = COUNTRY, fieldNotes = COMMENT, catalogNumber = IDNUMBER, otherCatalogNumbers = TaxonNameID, identifiedby = DETERMINER, identificationVerification = VERIFIEDBY) %>% 
   dplyr::select(dplyr::any_of(Allfields))
 
 BISH_minsec <- BISH_minsec %>% 
-  dplyr::rename(islandGroup = DATASET, recordedBy = COLLECTOR, recordNumber = COLLNUMBER, locality = LOCALITY, eventDate = COLLDATE, habitat = HABITAT, stateProvince = STATEPROV, island = ISCO, minimumElevationInMeters = VerbatimElevation, isCultivated = CULTIVATED, cultivar = CVAR,  occurrenceRemarks = PLDESCR, country = COUNTRY, fieldNotes = COMMENT, catalogNumber = IDNUMBER, otherCatalogNumbers = TaxonNameID) %>% 
+  dplyr::rename(islandGroup = DATASET, recordedBy = COLLECTOR, recordNumber = COLLNUMBER, locality = LOCALITY, eventDate = COLLDATE, habitat = HABITAT, stateProvince = STATEPROV, island = ISCO, minimumElevationInMeters = VerbatimElevation, isCultivated = CULTIVATED, cultivar = CVAR,  occurrenceRemarks = PLDESCR, country = COUNTRY, fieldNotes = COMMENT, catalogNumber = IDNUMBER, otherCatalogNumbers = TaxonNameID, identifiedby = DETERMINER, identificationVerification = VERIFIEDBY) %>% 
   dplyr::select(dplyr::any_of(Allfields))
 
 BISH_UTMs <- BISH_UTMs %>% 
-  dplyr::rename(islandGroup = DATASET, recordedBy = COLLECTOR, recordNumber = COLLNUMBER, locality = LOCALITY, eventDate = COLLDATE, habitat = HABITAT, stateProvince = STATEPROV, island = ISCO, minimumElevationInMeters = VerbatimElevation, isCultivated = CULTIVATED, cultivar = CVAR,  occurrenceRemarks = PLDESCR, country = COUNTRY, fieldNotes = COMMENT, catalogNumber = IDNUMBER, otherCatalogNumbers = TaxonNameID) %>% 
+  dplyr::rename(islandGroup = DATASET, recordedBy = COLLECTOR, recordNumber = COLLNUMBER, locality = LOCALITY, eventDate = COLLDATE, habitat = HABITAT, stateProvince = STATEPROV, island = ISCO, minimumElevationInMeters = VerbatimElevation, isCultivated = CULTIVATED, cultivar = CVAR,  occurrenceRemarks = PLDESCR, country = COUNTRY, fieldNotes = COMMENT, catalogNumber = IDNUMBER, otherCatalogNumbers = TaxonNameID, identifiedby = DETERMINER, identificationVerification = VERIFIEDBY) %>% 
   dplyr::select(dplyr::any_of(Allfields))
 
 BISH <- rbind(BISH_nocoords, BISH_declat, BISH_minsec, BISH_UTMs)
@@ -295,6 +298,7 @@ nrow(BISH)
 ## 1. PTBG- Merge with POH table
 
 making a single TaxonName field so we can merge
+
 
 
 ```{r}
@@ -532,9 +536,9 @@ combinedDF <-  setNames(data.frame(matrix(ncol = length(Allfields), nrow = 0)), 
 ```
 ```{r}
 #creating the correct source data for each
-BISH$source <- "BISH_database"
-PTBG$source <- "PTBG_database"
-US$source <- "US_database"
+BISH$source <- "BISH"
+PTBG$source <- "PTBG"
+US$source <- "US"
 ```
 Combine
 
@@ -768,6 +772,96 @@ nrow(finalDF)
 <!-- ```{r} -->
 <!-- finalDF <- rbind(justyear, eightchars, ninepluschars) -->
 <!-- ``` -->
+### standardizing institution names
+```{r}
+finalDF$source <- gsub("Auckland War Memorial Museum", "AK", finalDF$source)
+finalDF$source <- gsub("Arizona State University Biocollections", "ASU", finalDF$source)
+finalDF$source <- gsub("Australia's Virtual Herbarium", "AVH", finalDF$source)
+finalDF$source <- gsub("Australian Tropical Herbarium", "CNS", finalDF$source)
+finalDF$source <- gsub("Bernice Pauahi Bishop Museum", "BISH", finalDF$source)
+finalDF$source <- gsub("Biological Collections, California State University Northridge", "SFV", finalDF$source)
+finalDF$source <- gsub("Boston University", "BSN", finalDF$source)
+finalDF$source <- gsub("BPBM", "BISH", finalDF$source)
+finalDF$source <- gsub("Botanic Garden and Botanical Museum Berlin", "B", finalDF$source)
+finalDF$source <- gsub("Brown", "BRU", finalDF$source)
+finalDF$source <- gsub("CalBG", "RSA", finalDF$source)
+finalDF$source <- gsub("California Academy of Sciences", "CAS", finalDF$source)
+finalDF$source <- gsub("California State University, Fullerton", "MACF", finalDF$source)
+finalDF$source <- gsub("California State University, Long Beach", "LOB", finalDF$source)
+finalDF$source <- gsub("Canadian Museum of Nature", "CAN", finalDF$source)
+finalDF$source <- gsub("Centre for Australian National Biodiversity Research", "CBG", finalDF$source)
+finalDF$source <- gsub("Carnegie Museums", "CM", finalDF$source)
+finalDF$source <- gsub("Colgate University", "GRCH", finalDF$source)
+finalDF$source <- gsub("Conservatoire et Jardin botaniques de la Ville de Gen?¿ve - G", "G", finalDF$source, fixed = TRUE)
+finalDF$source <- gsub("CSU Los Angeles Herbarium", "LAM", finalDF$source)
+finalDF$source <- gsub("Desert Botanical Garden Herbarium", "DES", finalDF$source)
+finalDF$source <- gsub("Fairchild Tropical Botanic Garden", "FTG", finalDF$source)
+finalDF$source <- gsub("Field Museum", "F", finalDF$source)
+finalDF$source <- gsub("Harvard University Herbaria", "HUH", finalDF$source)
+finalDF$source <- gsub("Instituto Agron??mico (IAC)", "IAC", finalDF$source, fixed = TRUE)
+finalDF$source <- gsub("Instituto de Pesquisas Jardim Botanico do Rio de Janeiro", "RB", finalDF$source)
+finalDF$source <- gsub("Kathryn Kalmbach Herbarium (Denver Botanic Gardens)", "KHD", finalDF$source, fixed = TRUE)
+finalDF$source <- gsub("Instituto Nacional de Pesquisas da AmazÃ´nia (INPA)", "INPA", finalDF$source, fixed = TRUE)
+finalDF$source <- gsub("Landcare Research", "CHR", finalDF$source)
+finalDF$source <- gsub("Louisiana State University Herbarium", "LSU", finalDF$source)
+finalDF$source <- gsub("Lund Botanical Museum (LD)", "LD", finalDF$source, fixed = TRUE)
+finalDF$source <- gsub("Masaryk University, Department of Botany and Zoology", "BRNU", finalDF$source)
+finalDF$source <- gsub("Michigan State University Herbarium", "MSC", finalDF$source)
+finalDF$source <- gsub("Milwaukee Public Museum", "MIL", finalDF$source)
+finalDF$source <- gsub("MNHN - Museum national d'Histoire naturelle", "MNHN", finalDF$source)
+finalDF$source <- gsub("National Museum of Natural History, Smithsonian Institution", "US", finalDF$source)
+finalDF$source <- gsub("Natural History Museum", "US", finalDF$source)
+finalDF$source <- gsub("National Ecological Observatory Network", "NEON", finalDF$source)
+finalDF$source <- gsub("Natural History Museum, Vienna - Herbarium W", "W", finalDF$source)
+finalDF$source <- gsub("Naturalis Biodiversity Center", "L", finalDF$source)
+finalDF$source <- gsub("Rancho Santa Ana Botanic Garden", "RSA", finalDF$source)
+finalDF$source <- gsub("Royal Botanic Garden Edinburgh", "E", finalDF$source)
+
+finalDF$source <- gsub("Weber State University", "WSCO", finalDF$source)
+finalDF$source <- gsub("Utah State University", "UTC", finalDF$source)
+finalDF$source <- gsub("US, Vienna - Herbarium W", "W", finalDF$source)
+finalDF$source <- gsub("University of Vienna - Herbarium WU", "W", finalDF$source)
+finalDF$source <- gsub("University of Texas at Austin, Biodiversity Collections", "TEX", finalDF$source)
+finalDF$source <- gsub("University of Texas at El Paso Biodiversity Collections", "UTEP", finalDF$source)
+finalDF$source <- gsub("University of Tennessee Herbarium", "TENN", finalDF$source)
+finalDF$source <- gsub("University of South Carolina", "USCH", finalDF$source)
+finalDF$source <- gsub("University of Rhode Island", "KIRI", finalDF$source)
+finalDF$source <- gsub("University of North Carolina at Chapel Hill Herbarium (NCU)", "NCU", finalDF$source, fixed = TRUE)
+finalDF$source <- gsub("University of New England", "NE", finalDF$source)
+finalDF$source <- gsub("University of Minnesota Bell Museum", "MIN", finalDF$source)
+finalDF$source <- gsub("University of Michigan Herbarium", "MICH", finalDF$source)
+finalDF$source <- gsub("University of Kansas Biodiversity Institute", "KANU", finalDF$source)
+finalDF$source <- gsub("University of Graz, Institute of Plant Sciences", "GZU", finalDF$source)
+finalDF$source <- gsub("University of Connecticut", "CONN", finalDF$source)
+finalDF$source <- gsub("University of California, Davis", "DAV", finalDF$source)
+finalDF$source <- gsub("University of California Riverside", "UCR", finalDF$source)
+finalDF$source <- gsub("University of Calgary Herbarium", "UAC", finalDF$source)
+finalDF$source <- gsub("University of Calgary", "UAC", finalDF$source)
+finalDF$source <- gsub("University of British Columbia", "UBC", finalDF$source)
+finalDF$source <- gsub("University of Alberta Museums", "ALTA", finalDF$source)
+finalDF$source <- gsub("University of Alabama Biodiversity and Systematics", "UNA", finalDF$source)
+finalDF$source <- gsub("Universit?? de Montr??al Biodiversity Centre", "LT", finalDF$source, fixed = TRUE)
+finalDF$source <- gsub("Universidade Federal da Bahia", "ALCB", finalDF$source)
+finalDF$source <- gsub("Universidade Estadual Paulista - IBB", "HISA", finalDF$source)
+finalDF$source <- gsub("Universidade Estadual de Londrina", "FUEL", finalDF$source)
+finalDF$source <- gsub("Universidade de S?úo Paulo", "ESA", finalDF$source, fixed = TRUE)
+finalDF$source <- gsub("Universidad Nacional de Colombia", "COL", finalDF$source)
+finalDF$source <- gsub("The University of Vermont Pringle Herbarium", "VT", finalDF$source)
+finalDF$source <- gsub("The University of Melbourne", "MELU", finalDF$source)
+finalDF$source <- gsub("The Royal Botanic Gardens & Domain Trust", "NSW", finalDF$source)
+finalDF$source <- gsub("Tasmanian Museum and Art Gallery", "HO", finalDF$source)
+finalDF$source <- gsub("Taiwan Forestry Research Institute", "TAIF", finalDF$source)
+finalDF$source <- gsub("Staatliche Naturwissenschaftliche Sammlungen Bayerns", "M", finalDF$source)
+finalDF$source <- gsub("South African National Biodiversity Institute", "NBG", finalDF$source)
+finalDF$source <- gsub("San Jose State University", "SJSU", finalDF$source)
+finalDF$source <- gsub("San Diego US", "SDSU", finalDF$source)
+finalDF$source <- gsub("San Diego State University Herbarium (SDSU)", "code", finalDF$source, fixed = TRUE)
+finalDF$source <- gsub("Rutger's University - Chrysler Herbarium", "CHRB", finalDF$source)
+finalDF$source <- gsub("The New York Botanical Garden", "NY", finalDF$source)
+finalDF$source <- gsub("United Herbaria of the University and ETH Zurich (Z+ZT)", "Z", finalDF$source)
+finalDF$source <- gsub("Royal Botanic Gardens, Kew", "K", finalDF$source)
+```
+
 
 
 ## assigning duplicates
@@ -868,41 +962,90 @@ finalDF <- rbind(finalDF_cult, finalDF_nocult)
 nrow(finalDF)
 ```
 
-## Formatting for BISH database
+
+
+## More duplicate work
 ```{r}
-unique(finalDF$locationID)
+#temporarily making BISH #1
+finalDF$source <- gsub("BISH", "01BISH", finalDF$source)
+finalDF$source[finalDF$source==""]<-NA
 ```
+```{r}
+#making sure BISH specimens are first
+finalDF <- dplyr::arrange(finalDF, source)
+```
+
+```{r}
+comb <- with(finalDF, paste(locality, recordedBy, recordNumber, eventDate, habitat))
+finalDF <- within(finalDF, Dup_Group <- match(comb, unique(comb)))
+finalDF
+```
+
+```{r}
+length(unique(finalDF$Dup_Group))
+```
+
+
 making a unique location ID
 ```{r}
-first <- random_id(n = nrow(finalDF), bytes = 8, use_openssl = TRUE)
-second <- random_id(n = nrow(finalDF), bytes = 4, use_openssl = TRUE)
-third <- random_id(n = nrow(finalDF), bytes = 3, use_openssl = TRUE)
-fourth <- random_id(n = nrow(finalDF), bytes = 4, use_openssl = TRUE)
-fifth <- random_id(n = nrow(finalDF), bytes = 12, use_openssl = TRUE)
+first <- random_id(n = length(unique(finalDF$Dup_Group)), bytes = 8, use_openssl = TRUE)
+second <- random_id(n = length(unique(finalDF$Dup_Group)), bytes = 4, use_openssl = TRUE)
+third <- random_id(n = length(unique(finalDF$Dup_Group)), bytes = 3, use_openssl = TRUE)
+fourth <- random_id(n = length(unique(finalDF$Dup_Group)), bytes = 4, use_openssl = TRUE)
+fifth <- random_id(n = length(unique(finalDF$Dup_Group)), bytes = 12, use_openssl = TRUE)
 locationiddf <- as.data.frame(cbind(first, second, third, fourth, fifth))
-locationIDnew <- paste0(locationiddf$first, "-" ,locationiddf$second, "-", 4, locationiddf$third, "-", locationiddf$fourth, "-", locationiddf$fifth)   
-head(locationIDnew, 25)
+locationID <- paste0(locationiddf$first, "-" ,locationiddf$second, "-", 4, locationiddf$third, "-", locationiddf$fourth, "-", locationiddf$fifth)   
+head(locationID, 25)
 ```
 ```{r}
-finalDF$locationID <- locationIDnew
+locDF <- as.data.frame(cbind((order(unique(finalDF$Dup_Group))), locationID))
+locDF
+```
+
+```{r}
+finalDF <- finalDF %>% dplyr:: select(-c(occurrenceID, locationID))
+```
+```{r}
+finalDF <- merge(finalDF, locDF, by.x = "Dup_Group", by.y = "V1", all.x = TRUE)
 finalDF
 ```
 
 ##### occurrence ID making... 
 ```{r}
-first <- random_id(n = nrow(finalDF), bytes = 8, use_openssl = TRUE)
-second <- random_id(n = nrow(finalDF), bytes = 4, use_openssl = TRUE)
-third <- random_id(n = nrow(finalDF), bytes = 3, use_openssl = TRUE)
-fourth <- random_id(n = nrow(finalDF), bytes = 4, use_openssl = TRUE)
-fifth <- random_id(n = nrow(finalDF), bytes = 12, use_openssl = TRUE)
-occurrenceiddf <- as.data.frame(cbind(first, second, third, fourth, fifth))
-occurrenceIDnew <- paste0(occurrenceiddf$first, "-" ,occurrenceiddf$second, "-", 4, occurrenceiddf$third, "-", occurrenceiddf$fourth, "-", occurrenceiddf$fifth)   
-head(occurrenceIDnew, 25)
+#making sure BISH specimens are first
+finalDF <- dplyr::arrange(finalDF, source)
 ```
 ```{r}
-finalDF$occurrenceID <- occurrenceIDnew
+first <- random_id(n = length(unique(finalDF$Dup_Group)), bytes = 8, use_openssl = TRUE)
+second <- random_id(n = length(unique(finalDF$Dup_Group)), bytes = 4, use_openssl = TRUE)
+third <- random_id(n = length(unique(finalDF$Dup_Group)), bytes = 3, use_openssl = TRUE)
+fourth <- random_id(n = length(unique(finalDF$Dup_Group)), bytes = 4, use_openssl = TRUE)
+fifth <- random_id(n = length(unique(finalDF$Dup_Group)), bytes = 12, use_openssl = TRUE)
+occurrenceiddf <- as.data.frame(cbind(first, second, third, fourth, fifth))
+occurrenceID <- paste0(occurrenceiddf$first, "-" ,occurrenceiddf$second, "-", 4, occurrenceiddf$third, "-", occurrenceiddf$fourth, "-", occurrenceiddf$fifth)   
+head(occurrenceID, 25)
+```
+```{r}
+occDF <- as.data.frame(cbind((order(unique(finalDF$Dup_Group))), occurrenceID))
+occDF
+```
+
+```{r}
+finalDF <- merge(finalDF, occDF, by.x = "Dup_Group", by.y = "V1", all.x = TRUE)
 finalDF
 ```
+
+
+```{r}
+#rename BISH #1
+finalDF$source <- gsub( "01BISH", "BISH", finalDF$source)
+```
+
+```{r}
+finalDF <-distinct(finalDF, occurrenceID, source, .keep_all = TRUE)
+finalDF
+```
+
 
 ```{r}
 #forwrite <- gsub("\t", "", finalDF)
@@ -911,23 +1054,30 @@ saveRDS(finalDF, file= "All_herbaria_COMPILED_2020-01-21.rds")
 ```
 
 ```{r}
-
-Taxonfields <- c( "taxonID", "IPNIID", "parentNameUsageID", "scientificName", "scientificNameAuthorship", "namePublishedIn", "originalNameUsage", "taxonRank", "kingdom", "phylum", "class", "order", "family", "genus", "subgenus", "specificEpithet", "vernacularName", "taxonRemarks")
+Taxonfields <- c( "taxonID", "acceptedNameUsageID", "IPNIID", "parentNameUsageID", "scientificName", "scientificNameAuthorship", "namePublishedIn", "originalNameUsage", "taxonRank", "kingdom", "phylum", "class", "order", "family", "genus", "subgenus", "specificEpithet", "vernacularName", "taxonRemarks")
 
 Locationfields <- c("locationID", "higherGeographyID", "locationType", "continent", "waterbody", "islandGroup", "island", "country", "countrycode", "stateProvince", "county", "municipality", "locality", "minimumElevationInMeters", "maximumElevationInMeters", "decimalLatitude", "decimalLongitude", "geodeticDatum", "coordinateUncertaintyInMeters", "footprintWKT", "footprintSRS", "locationRemarks" )
 
-Occurrencefields <- c("occurrenceID", "locationID", "taxonID", "basisOfRecord", "catalogNumber", "recordNumber", "recordedBy", "individualCount", "organismQuantityProperty", "organismQuantityTypeProperty", "sex", "lifeStage", "reproductiveCondition", "behavior", "establishmentMeans", "occurrenceStatus", "preparations", "disposition", "associatedMedia", "associatedReferences", "associatedTaxa", "otherCatalogNumbers", "occurrenceRemarks", "fieldNumber", "eventDate", "eventTime", "habitat", "samplingProtocol", "fieldNotes", "watershedCount", "isCultivated", "source", "sourceIdentifier", "sourceURL")
+Occurrencefields <- c("occurrenceID", "taxonID", "locationID", "basisOfRecord", "catalogNumber", "recordNumber", "recordedBy", "individualCount", "organismQuantity", "organismQuantityType", "identifiedby", "identificationVerification", "sex", "lifeStage", "reproductiveCondition", "behavior", "establishmentMeans", "occurrenceStatus", "preparations", "disposition", "associatedMedia", "associatedReferences", "associatedTaxa", "otherCatalogNumbers", "occurrenceRemarks", "fieldNumber", "eventDate", "eventTime", "habitat", "samplingProtocol", "fieldNotes", "watershedCount", "isCultivated", "source", "sourceIdentifier", "sourceURL")
+
+forPOH <- c("occurrenceID",	"taxonID",	"acceptedNameUsageID",	"locationID",	"basisOfRecord",	"catalogNumber",	'recordNumber',	'recordedBy',	'individualCount', 'identifiedby',"establishmentMeans",	'occurrenceStatus',	'disposition',	'associatedMedia',	'associatedTaxa',	'otherCatalogNumbers',	'occurrenceRemarks',	'eventDate',	'habitat',	'samplingProtocol',	'fieldNotes',	'isCultivated',	'source',	'sourceIdentifier',	'island',	'locality',	'minimumElevationInMeters',	'maximumElevationInMeters',	'decimalLatitude',	'decimalLongitude',	'coordinateUncertaintyInMeters')
+length(forPOH)
 ```
 
 Separating the occurrence and location
 ```{r}
 OccurrenceDF <- finalDF %>% dplyr::select(all_of(Occurrencefields))
 LocationDF <- finalDF %>% dplyr::select(all_of(Locationfields))
+forPOH <- finalDF %>% dplyr::select(all_of(forPOH))
 ```
+
 
 ```{r}
 #forwrite <- gsub("\t", "", finalDF)
 write.csv(OccurrenceDF, file = "Occurrence_COMPILED_2020-01-21.csv", row.names = FALSE)
-write.csv(LocationDF, file= "Location_COMPILED_2020-01-21.rds", row.names = FALSE)
+write.csv(LocationDF, file= "Location_COMPILED_2020-01-21.csv", row.names = FALSE)
+write.csv(forPOH, file= "forPOH_2020-01-21.csv", row.names = FALSE)
 ```
+
+
 
