@@ -1,0 +1,355 @@
+---
+title: "POH Photo + Human Observation Merge Pipeline"
+author: "Kelsey Brock"
+date: "12/9/2020"
+output: html_document
+---
+
+
+
+
+```{r, }
+require(knitr)
+```
+```{r}
+#get the needed packages
+#get the needed packages
+if(!require("pacman")){
+	install.packages("pacman")
+	library(pacman)}
+p_load("dplyr",  "ggplot2", "taxize", "sp", "sf", "proj4", "data.table", "stringr", "flora", "DataCombine", "parzer", "stringi", "scrubr", "ids", "lubridate", "hablar", "data.table")
+```
+## These are the fields we ultimately want in the final data set
+These are DarwinCore column names that are currently in the POH schema
+```{r}
+
+Taxonfields <- c( "taxonID", "acceptedNameUsageID", "IPNIID", "parentNameUsageID", "scientificName", "scientificNameAuthorship", "namePublishedIn", "originalNameUsage", "taxonRank", "kingdom", "phylum", "class", "order", "family", "genus", "subgenus", "specificEpithet", "vernacularName", "taxonRemarks")
+
+Locationfields <- c("locationID", "higherGeographyID", "locationType", "continent", "waterbody", "islandGroup", "island", "country", "countrycode", "stateProvince", "county", "municipality", "locality", "minimumElevationInMeters", "maximumElevationInMeters", "decimalLatitude", "decimalLongitude", "geodeticDatum", "coordinateUncertaintyInMeters", "footprintWKT", "footprintSRS", "locationRemarks" )
+
+Occurrencefields <- c("occurrenceID", "taxonID", "locationID", "basisOfRecord", "catalogNumber", "recordNumber", "recordedBy", "individualCount", "organismQuantity", "organismQuantityType", "identifiedby", "identificationVerification", "sex", "lifeStage", "reproductiveCondition", "behavior", "establishmentMeans", "occurrenceStatus", "preparations", "disposition", "associatedMedia", "associatedReferences", "associatedTaxa", "otherCatalogNumbers", "occurrenceRemarks", "fieldNumber", "eventDate", "eventTime", "habitat", "samplingProtocol", "fieldNotes", "watershedCount", "isCultivated", "source", "sourceIdentifier", "sourceURL")
+
+Allfields <- unique(c(Taxonfields, Locationfields, Occurrencefields))
+```
+
+## Read in the Data Sets
+IMPORTANT!! Before reading in csvs, make sure excel hasn't converted the date format! go in and make sure the date cells are formatted as YYYY-mm-dd
+```{r}
+#Taxon Table for first merging
+
+POH_taxon_2 <- read.csv("POH_TAXA_12_17_2020.csv", header=T, sep=',', stringsAsFactors=F) %>% dplyr::select(taxonID, acceptedNameUsageID, scientificName, scientificNameAuthorship, kingdom,	phylum,	class,	order,	family,	genus, vernacularName, BISH_TaxonID)
+POH_taxon_2 <- subset(POH_taxon_2, POH_taxon_2$acceptedNameUsageID != "")
+POH_taxon_2 <- subset(POH_taxon_2, !is.na(POH_taxon_2$acceptedNameUsageID))
+
+POH_taxon_1 <-  POH_taxon_2 %>% dplyr::select(acceptedNameUsageID, scientificName, BISH_TaxonID, taxonID)
+POH_taxon_2 <- subset(POH_taxon_2, POH_taxon_2$acceptedNameUsageID == POH_taxon_2$taxonID)
+```
+```{r}
+#Herbarium Data                                                                                                         
+POHImages <- read.csv("POH_Images.csv", header=T, sep=',', stringsAsFactors=F)
+GBIF <- read.csv("occurrence.csv", header=T, sep=',', stringsAsFactors=F) %>% dplyr::rename(TaxonomicName = scientificName) %>% dplyr::select(-c(acceptedNameUsageID,	taxonID, kingdom,	phylum,	class,	order,	family,	genus, vernacularName))
+  ## subset to remove human occurrences (we'll deal with those later)
+  GBIF_obs <- subset(GBIF, GBIF$basisOfRecord != "PRESERVED_SPECIMEN")
+```
+```{r}
+#This polygon is only for the main hawaiian islands - we should build another that includes the NW islands
+islandpolys <- st_read("Coastline.shp")
+```
+
+# GBIF Observation Data
+## 1. GBIF- Merge with POH table
+
+
+Get rid of authornames that are embedded in the taxon name
+
+```{r}
+GBIF_obs$scientificName_clean <- unlist(lapply(GBIF_obs$TaxonomicName, remove.authors))
+```
+```{r}
+temp <- merge(POH_taxon_1, GBIF_obs,  by.x = "scientificName", by.y = "scientificName_clean", all.x = FALSE, all.y = TRUE)
+temp <- subset(temp, is.na(temp$acceptedNameUsageID))
+occ <- nrow(temp)
+tax <- length(unique(temp$scientificName))
+# but still want to export mismatches
+write.csv(temp, file = "GBIFOBStaxa_Not_in_POH_table_01262021.csv", row.names = FALSE)
+print(paste0("lost ", occ , " occurrences represented by ", tax, " unique values in the taxa names field"))
+```
+```{r}
+GBIF_obs<- merge(POH_taxon_1, GBIF_obs,  by.x = "scientificName", by.y = "scientificName_clean", all.x = FALSE, all.y = FALSE)
+```
+
+Second merge to assign an accepted scientific name
+```{r}
+GBIF_obs <- merge(POH_taxon_2, GBIF_obs, by = "acceptedNameUsageID", all.x = FALSE, all.y = TRUE) %>% dplyr::rename(scientificName = scientificName.x, Year = year)
+```
+
+
+## 2. GBIF- Data Cleanup
+none
+
+## 3. GBIF- Standardize column names and select the ones we want
+```{r}
+# new_name = old_name
+GBIF_obs <- GBIF_obs %>% 
+  dplyr::rename(publisher_temp = publisher, source_temp = source) %>% 
+  dplyr::rename(source = publisher_temp) %>% 
+  dplyr::select(dplyr::any_of(Allfields))
+```
+```{r}
+nrow(GBIF_obs)
+```
+
+# POH Images
+## 1. POH Images- Merge with POH table
+
+
+```{r}
+POHImages
+```
+```{r}
+POH_taxon_1
+```
+
+
+```{r}
+temp <- merge(POH_taxon_1, POHImages,  by = "taxonID", all.x = FALSE, all.y = TRUE)
+temp <- subset(temp, is.na(temp$acceptedNameUsageID))
+occ <- nrow(temp)
+tax <- length(unique(temp$scientificName))
+# but still want to export mismatches
+write.csv(temp, file = "POHIMagestaxa_Not_in_POH_table_01262021.csv", row.names = FALSE)
+print(paste0("lost ", occ , " occurrences represented by ", tax, " unique values in the taxa names field"))
+```
+```{r}
+POHImages<- merge(POH_taxon_1, POHImages,  by = "taxonID", all.x = FALSE, all.y = FALSE)
+nrow(POHImages)
+```
+
+Second merge to assign an accepted scientific name
+```{r}
+POHImages <- merge(POH_taxon_2, POHImages, by = "acceptedNameUsageID", all.x = FALSE, all.y = TRUE) %>% dplyr::rename(scientificName = scientificName.x)
+nrow(POHImages)
+```
+
+## 2. POH Images- Data Cleanup
+none
+
+
+## 3. POH Images- Standardize column names and select the ones we want
+```{r}
+# new_name = old_name
+POHImages <- POHImages %>% 
+  dplyr::rename(source = Source, eventDate = Date_Taken, isCultivated = Cultivated, island = Island, localty = Locality, decimalLatitude = Latitude, decimalLongitude = Longitude, occurrenceREmarks = COMMENTS) %>% 
+  dplyr::select(dplyr::any_of(Allfields))
+```
+
+
+## 4. Collate obsetrvation data into a single dataframe
+
+ Create empty dataframe with these columns
+```{r}
+combinedDF <-  setNames(data.frame(matrix(ncol = length(Allfields), nrow = 0)), Allfields)
+```
+
+Combine
+
+```{r}
+combinedDF <- dplyr::bind_rows(mutate_all(combinedDF, as.character), mutate_all(GBIF_obs, as.character), mutate_all(POHImages, as.character))
+```
+```{r}
+nrow(combinedDF)
+```
+
+```{r}
+combinedDF
+```
+
+## 5. Remove Duplicates
+Removes obvious duplicates, BISH should be kept because it's the first in the dataframe
+```{r}
+#deduped_combinedDF <-distinct(combinedDF, locality, recordedBy, recordNumber, eventDate, scientificName, decimalLatitude, .keep_all = TRUE)
+deduped_combinedDF <- combinedDF
+```
+```{r}
+#How many duplicates did we remove?
+nrow(combinedDF) - nrow(deduped_combinedDF)
+```
+assign UUID to make later merges easier
+```{r}
+deduped_combinedDF$UUID <- random_id(n = nrow(deduped_combinedDF), bytes = 16, use_openssl = TRUE)
+```
+
+
+## 6. Standardize the spelling of island names
+Only care about the main islands for now
+```{r}
+unique(deduped_combinedDF$island)
+```
+
+```{r}
+#remove the term " island"
+deduped_combinedDF$island <- gsub(" island", "", deduped_combinedDF$island)
+deduped_combinedDF$island <- gsub(" Island", "", deduped_combinedDF$island)
+#removing the punctuation
+deduped_combinedDF$island <- gsub("`", "", deduped_combinedDF$island)
+deduped_combinedDF$island <- gsub("'", "", deduped_combinedDF$island)
+deduped_combinedDF$island <- gsub("&", "and", deduped_combinedDF$island)
+# only first letter upper case
+deduped_combinedDF$island <- str_to_title(deduped_combinedDF$island)
+# deal with the unknown islands
+deduped_combinedDF$island <- gsub('Sandwichs', "", deduped_combinedDF$island)
+deduped_combinedDF$island <- gsub('Sand', "Oahu", deduped_combinedDF$island)
+deduped_combinedDF$island <- gsub("Unknown", "" , deduped_combinedDF$island)
+deduped_combinedDF$island <- gsub("Island Of Kauai", "Kauai" , deduped_combinedDF$island)
+deduped_combinedDF$island <- gsub('Ouau [Oahu]', "Oahu" , deduped_combinedDF$island, fixed = TRUE)
+
+```
+
+## 7. Remove bad points by seeing which fall in the ocean.
+```{r}
+deduped_combinedDF$decimalLatitude <- dplyr::na_if(deduped_combinedDF$decimalLatitude, "")
+deduped_combinedDF$decimalLongitude <- dplyr::na_if(deduped_combinedDF$decimalLongitude, "")
+
+nocoords <- subset(deduped_combinedDF, is.na(decimalLatitude))
+hascoords <- subset(deduped_combinedDF, !is.na(decimalLatitude))
+```
+How many have coordinates (no matter how bad)?
+```{r}
+nrow(hascoords)
+```
+```{r}
+oo <- coord_incomplete(hascoords, lat = "decimalLatitude", lon = "decimalLongitude", drop = TRUE)
+oo <- coord_imprecise (oo, which = "both", lat = "decimalLatitude", lon = "decimalLongitude", drop = TRUE)
+oo <- coord_unlikely (oo, lat = "decimalLatitude", lon = "decimalLongitude", drop = TRUE)
+oo$CleanCoordinates <- "yes"
+oo <- oo %>% dplyr::select(UUID, CleanCoordinates)
+hascoords <- merge(hascoords, oo, by="UUID", all.x = TRUE, all.y = FALSE)
+```
+
+```{r}
+hascoords_sub <- subset(hascoords, CleanCoordinates == "yes")
+hascoords_sub <- sf::st_as_sf(hascoords_sub, coords = c("decimalLongitude", "decimalLatitude"), crs = 4326)
+
+hascoords_sub <- st_join(hascoords_sub, islandpolys, join = st_intersects,  left = TRUE )
+```
+```{r}
+hascoords_sub_deoceanized <- subset(as.data.frame(hascoords_sub), !is.na(hascoords_sub$isle))
+hascoords_sub_deoceanized$CleanCoordinates_not_ocean <- "yes"
+hascoords_sub_deoceanized
+```
+replace island Nas with values from shapefile "isle" column
+this is helpful for records that didn't record the island name, but have an accurate GPS point
+```{r}
+hascoords_sub_deoceanized$island <- hascoords_sub_deoceanized$isle
+hascoords_sub_deoceanized$island <- gsub("kahoolawe", "Kahoolawe", hascoords_sub_deoceanized$island)
+```
+
+merge deoceanized column back into main dataframe
+```{r}
+# mergin back with orginal data.frame
+ee <- hascoords_sub_deoceanized %>% dplyr::select(UUID, CleanCoordinates_not_ocean)
+finalDF <- merge(deduped_combinedDF, ee, by="UUID", all.x = TRUE, all.y = FALSE)
+```
+replace lat lons with NAs if their point isn't clean and landing on land
+```{r}
+nicecoords <- subset(finalDF, CleanCoordinates_not_ocean == "yes")
+notnicecoords <- subset(finalDF, is.na(CleanCoordinates_not_ocean))
+notnicecoords$decimalLatitude <- NA
+notnicecoords$decimalLongitude <- NA
+#rbind back together
+finalDF <- rbind(nicecoords,notnicecoords)
+```
+
+```{r}
+nrow(finalDF)
+```
+
+## assigning duplicates
+
+```{r}
+temp <- finalDF %>% find_duplicates(locality, recordedBy, recordNumber, eventDate, scientificName, habitat)
+temp$isDuplicate <- "Yes"
+temp <- temp %>% dplyr::select(UUID, isDuplicate)
+```
+```{r}
+finalDF <- merge(finalDF, temp, by = "UUID", all.x = TRUE, all.y = FALSE)
+```
+
+```{r}
+nrow(finalDF)
+```
+
+making a unique location ID
+```{r}
+first <- random_id(n = nrow(finalDF), bytes = 8, use_openssl = TRUE)
+second <- random_id(n = nrow(finalDF), bytes = 4, use_openssl = TRUE)
+third <- random_id(n = nrow(finalDF), bytes = 3, use_openssl = TRUE)
+fourth <- random_id(n = nrow(finalDF), bytes = 4, use_openssl = TRUE)
+fifth <- random_id(n = nrow(finalDF), bytes = 12, use_openssl = TRUE)
+locationiddf <- as.data.frame(cbind(first, second, third, fourth, fifth))
+locationID <- paste0(locationiddf$first, "-" ,locationiddf$second, "-", 4, locationiddf$third, "-", locationiddf$fourth, "-", locationiddf$fifth)   
+head(locationID, 100)
+```
+```{r}
+length(locationID)
+```
+
+```{r}
+finalDF <- as.data.frame(cbind(finalDF, locationID))
+finalDF
+```
+
+
+
+##### occurrence ID making... 
+
+```{r}
+first <- random_id(n = nrow(finalDF), bytes = 8, use_openssl = TRUE)
+second <- random_id(n = nrow(finalDF), bytes = 4, use_openssl = TRUE)
+third <- random_id(n = nrow(finalDF), bytes = 3, use_openssl = TRUE)
+fourth <- random_id(n = nrow(finalDF), bytes = 4, use_openssl = TRUE)
+fifth <- random_id(n = nrow(finalDF), bytes = 12, use_openssl = TRUE)
+occurrenceiddf <- as.data.frame(cbind(first, second, third, fourth, fifth))
+occurrenceID <- paste0(occurrenceiddf$first, "-" ,occurrenceiddf$second, "-", 4, occurrenceiddf$third, "-", occurrenceiddf$fourth, "-", occurrenceiddf$fifth)   
+length(occurrenceID)
+head(occurrenceID)
+```
+
+```{r}
+finalDF <- as.data.frame(cbind(finalDF, occurrenceID))
+finalDF
+```
+
+```{r}
+#forwrite <- gsub("\t", "", finalDF)
+write.csv(finalDF, file = "All_observations_COMPILED_2020-01-21.csv", row.names = FALSE)
+saveRDS(finalDF, file= "All_observations_COMPILED_2020-01-21.rds")
+```
+
+```{r}
+Taxonfields <- c( "taxonID", "acceptedNameUsageID", "IPNIID", "parentNameUsageID", "scientificName", "scientificNameAuthorship", "namePublishedIn", "originalNameUsage", "taxonRank", "kingdom", "phylum", "class", "order", "family", "genus", "subgenus", "specificEpithet", "vernacularName", "taxonRemarks")
+
+Locationfields <- c("locationID", "higherGeographyID", "locationType", "continent", "waterbody", "islandGroup", "island", "country", "countrycode", "stateProvince", "county", "municipality", "locality", "minimumElevationInMeters", "maximumElevationInMeters", "decimalLatitude", "decimalLongitude", "geodeticDatum", "coordinateUncertaintyInMeters", "footprintWKT", "footprintSRS", "locationRemarks" )
+
+Occurrencefields <- c("occurrenceID", "taxonID", "locationID", "basisOfRecord", "catalogNumber", "recordNumber", "recordedBy", "individualCount", "organismQuantity", "organismQuantityType", "identifiedby", "identificationVerification", "sex", "lifeStage", "reproductiveCondition", "behavior", "establishmentMeans", "occurrenceStatus", "preparations", "disposition", "associatedMedia", "associatedReferences", "associatedTaxa", "otherCatalogNumbers", "occurrenceRemarks", "fieldNumber", "eventDate", "eventTime", "habitat", "samplingProtocol", "fieldNotes", "watershedCount", "isCultivated", "source", "sourceIdentifier", "sourceURL")
+
+forPOH <- c("occurrenceID",	"taxonID",	"acceptedNameUsageID",	"locationID",	"basisOfRecord",	"catalogNumber",	'recordNumber',	'recordedBy',	'individualCount', 'identifiedby',"establishmentMeans",	'occurrenceStatus',	'disposition',	'associatedMedia',	'associatedTaxa',	'otherCatalogNumbers',	'occurrenceRemarks',	'eventDate',	'habitat',	'samplingProtocol',	'fieldNotes',	'isCultivated',	'source',	'sourceIdentifier',	'island',	'locality',	'minimumElevationInMeters',	'maximumElevationInMeters',	'decimalLatitude',	'decimalLongitude',	'coordinateUncertaintyInMeters')
+length(forPOH)
+```
+
+Separating the occurrence and location
+```{r}
+OccurrenceDF <- finalDF %>% dplyr::select(all_of(Occurrencefields))
+LocationDF <- finalDF %>% dplyr::select(all_of(Locationfields))
+forPOH <- finalDF %>% dplyr::select(all_of(forPOH))
+```
+
+
+```{r}
+#forwrite <- gsub("\t", "", finalDF)
+write.csv(OccurrenceDF, file = "Obs_Occurrence_COMPILED_2020-01-21.csv", row.names = FALSE)
+write.csv(LocationDF, file= "Obs_Location_COMPILED_2020-01-21.csv", row.names = FALSE)
+write.csv(forPOH, file= "Obs_forPOH_2020-01-21.csv", row.names = FALSE)
+```
+
+
