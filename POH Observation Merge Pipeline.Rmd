@@ -201,6 +201,7 @@ deduped_combinedDF$island <- gsub('Sandwichs', "", deduped_combinedDF$island)
 deduped_combinedDF$island <- gsub('Sand', "Oahu", deduped_combinedDF$island)
 deduped_combinedDF$island <- gsub("Unknown", "" , deduped_combinedDF$island)
 deduped_combinedDF$island <- gsub("Island Of Kauai", "Kauai" , deduped_combinedDF$island)
+deduped_combinedDF$island <- gsub("Big", "Hawaii" , deduped_combinedDF$island)
 deduped_combinedDF$island <- gsub('Ouau [Oahu]', "Oahu" , deduped_combinedDF$island, fixed = TRUE)
 
 ```
@@ -321,9 +322,19 @@ finalDF
 ```
 
 ```{r}
+unique(finalDF$basisOfRecord)
+```
+
+
+```{r}
+finalDF$basisOfRecord <- "Human_Observation"
+```
+
+
+```{r}
 #forwrite <- gsub("\t", "", finalDF)
-write.csv(finalDF, file = "All_observations_COMPILED_2020-01-21.csv", row.names = FALSE)
-saveRDS(finalDF, file= "All_observations_COMPILED_2020-01-21.rds")
+write.csv(finalDF, file = "All_observations_COMPILED_2021-06-29.csv", row.names = FALSE)
+saveRDS(finalDF, file= "All_observations_COMPILED_2021-06-29.rds")
 ```
 
 ```{r}
@@ -336,7 +347,6 @@ Occurrencefields <- c("occurrenceID", "taxonID", "locationID", "basisOfRecord", 
 forPOH <- c("occurrenceID",	"taxonID",	"acceptedNameUsageID",	"locationID",	"basisOfRecord",	"catalogNumber",	'recordNumber',	'recordedBy',	'individualCount', 'identifiedby',"establishmentMeans",	'occurrenceStatus',	'disposition',	'associatedMedia',	'associatedTaxa',	'otherCatalogNumbers',	'occurrenceRemarks',	'eventDate',	'habitat',	'samplingProtocol',	'fieldNotes',	'isCultivated',	'source',	'sourceIdentifier',	'island',	'locality',	'minimumElevationInMeters',	'maximumElevationInMeters',	'decimalLatitude',	'decimalLongitude',	'coordinateUncertaintyInMeters')
 length(forPOH)
 ```
-
 Separating the occurrence and location
 ```{r}
 OccurrenceDF <- finalDF %>% dplyr::select(all_of(Occurrencefields))
@@ -347,9 +357,21 @@ forPOH <- finalDF %>% dplyr::select(all_of(forPOH))
 
 ```{r}
 #forwrite <- gsub("\t", "", finalDF)
-write.csv(OccurrenceDF, file = "Obs_Occurrence_COMPILED_2020-01-21.csv", row.names = FALSE)
-write.csv(LocationDF, file= "Obs_Location_COMPILED_2020-01-21.csv", row.names = FALSE)
-write.csv(forPOH, file= "Obs_forPOH_2020-01-21.csv", row.names = FALSE)
+write.csv(OccurrenceDF, file = "Obs_Occurrence_COMPILED_2021-06-29.csv", row.names = FALSE)
+write.csv(LocationDF, file= "Obs_Location_COMPILED_2021-06-29.csv", row.names = FALSE)
+write.csv(forPOH, file= "Obs_forPOH_2021-06-29.csv", row.names = FALSE)
 ```
 
+Merging all occurrences
+```{r}
+Herb <- read.csv("herb_forPOH_2021-06-29.csv", header=T, sep=',', stringsAsFactors=F)
+```
+
+```{r}
+Obs <- forPOH
+Occ <- rbind(Herb, Obs)
+```
+```{r}
+write.csv(Occ, file= "All_Occurrences_forPOH_2021-06-29.csv", row.names = FALSE)
+```
 
