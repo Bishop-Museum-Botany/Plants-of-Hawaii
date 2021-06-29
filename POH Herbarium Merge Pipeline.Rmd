@@ -1041,6 +1041,14 @@ finalDF
 finalDF$source <- gsub( "01BISH", "BISH", finalDF$source)
 ```
 
+
+Indicating the Basis of Record
+
+```{r}
+finalDF$basisOfRecord <- "Preserved_Specimen"
+```
+
+
 ```{r}
 finalDF <-distinct(finalDF, occurrenceID, source, .keep_all = TRUE)
 finalDF
@@ -1049,8 +1057,8 @@ finalDF
 
 ```{r}
 #forwrite <- gsub("\t", "", finalDF)
-write.csv(finalDF, file = "All_herbaria_COMPILED_2020-01-21.csv", row.names = FALSE)
-saveRDS(finalDF, file= "All_herbaria_COMPILED_2020-01-21.rds")
+write.csv(finalDF, file = "All_herbaria_COMPILED_2021-06-29.csv", row.names = FALSE)
+saveRDS(finalDF, file= "All_herbaria_COMPILED_2021-06-29.rds")
 ```
 
 ```{r}
@@ -1064,6 +1072,7 @@ forPOH <- c("occurrenceID",	"taxonID",	"acceptedNameUsageID",	"locationID",	"bas
 length(forPOH)
 ```
 
+
 Separating the occurrence and location
 ```{r}
 OccurrenceDF <- finalDF %>% dplyr::select(all_of(Occurrencefields))
@@ -1074,9 +1083,9 @@ forPOH <- finalDF %>% dplyr::select(all_of(forPOH))
 
 ```{r}
 #forwrite <- gsub("\t", "", finalDF)
-write.csv(OccurrenceDF, file = "Occurrence_COMPILED_2020-01-21.csv", row.names = FALSE)
-write.csv(LocationDF, file= "Location_COMPILED_2020-01-21.csv", row.names = FALSE)
-write.csv(forPOH, file= "forPOH_2020-01-21.csv", row.names = FALSE)
+write.csv(OccurrenceDF, file = "Occurrence_COMPILED_2021-06-29.csv", row.names = FALSE)
+write.csv(LocationDF, file= "Location_COMPILED_2021-06-29.csv", row.names = FALSE)
+write.csv(forPOH, file= "herb_forPOH_2021-06-29.csv", row.names = FALSE)
 ```
 
 
