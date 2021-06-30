@@ -352,6 +352,16 @@ survey$basisOfRecord <- "Survey"
 finalDF <- rbind(observation, survey)
 nrow(finalDF)
 ```
+### Date Issues
+
+```{r}
+finalDF$eventDate <- gsub("T.*", "", finalDF$eventDate)
+unique(finalDF$eventDate)
+```
+
+
+
+
 
 ```{r}
 #forwrite <- gsub("\t", "", finalDF)
