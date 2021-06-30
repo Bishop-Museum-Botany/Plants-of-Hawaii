@@ -324,12 +324,34 @@ finalDF
 ```{r}
 unique(finalDF$basisOfRecord)
 ```
+```{r}
+finalDF
+```
 
 
 ```{r}
-finalDF$basisOfRecord <- "Human_Observation"
+survey <- grepl.sub(data = finalDF, pattern = "Invasive Species Committee", Var = "recordedBy", keep.found = TRUE)
+observation <- grepl.sub(data = finalDF, pattern = "Invasive Species Committee", Var = "recordedBy", keep.found = FALSE)
 ```
 
+```{r}
+nrow(survey) + nrow(observation) == nrow(finalDF)
+```
+```{r}
+observation <- subset(observation, source != "BPBM")
+nrow(observation)
+```
+
+```{r}
+observation$basisOfRecord <- "Human_Observation"
+survey$basisOfRecord <- "Survey"
+```
+
+
+```{r}
+finalDF <- rbind(observation, survey)
+nrow(finalDF)
+```
 
 ```{r}
 #forwrite <- gsub("\t", "", finalDF)
