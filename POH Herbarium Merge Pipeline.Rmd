@@ -71,6 +71,9 @@ POH_taxon_2 <- subset(POH_taxon_2, !is.na(POH_taxon_2$acceptedNameUsageID))
 POH_taxon_1 <-  POH_taxon_2 %>% dplyr::select(acceptedNameUsageID, scientificName, BISH_TaxonID)
 POH_taxon_2 <- subset(POH_taxon_2, POH_taxon_2$acceptedNameUsageID == POH_taxon_2$taxonID)
 ```
+
+
+
 ```{r}
 #Herbarium Data                                                                                                         
 BISH <- read.csv("BISH_Hawaii_Specimens_1_18_2021 - Copy.csv", header=T, sep=',', stringsAsFactors=F) 
@@ -88,6 +91,7 @@ idigbio <- read.csv("iDigBio.csv", header=T, sep=',', stringsAsFactors=F)
 #This polygon is only for the main hawaiian islands - we should build another that includes the NW islands
 islandpolys <- st_read("Coastline.shp")
 ```
+
 
 ###### Where to get updates of these data sets:
 BISH <- download from BISH Specimen Database, joined with Tim's taxon table to get ID number
@@ -118,9 +122,7 @@ nrow(GBIF_pres_spec)
 ```{r}
 nrow(idigbio)
 ```
-```{r}
-BISH
-```
+
 
 # BISH Herbarium Data
 ## 1. BISH- Merge with POH table
@@ -137,14 +139,16 @@ tax <- length(unique(temp$TaxonNameID))
 print(paste0("lost ", occ , " occurrences represented by ", tax, " BISH taxon IDs"))
 write.csv(temp, file = "BISHIDs_Not_in_POH_table_12102020.csv", row.names = FALSE)
 ```
+
 ```{r}
 BISH<- merge(BISH, POH_taxon_1, by.x = "TaxonNameID", by.y = "BISH_TaxonID", all.x = FALSE, all.y = FALSE)
 ```
 
 Second merge to assign an accepted scientific name
 ```{r}
-BISH <- merge(POH_taxon_2, BISH, by = "acceptedNameUsageID", all.x = FALSE, all.y = TRUE) %>% dplyr::rename(scientificName = scientificName.x)
+BISH <- merge(POH_taxon_2, BISH, by = "acceptedNameUsageID", all.x = FALSE, all.y = FALSE) %>% dplyr::rename(scientificName = scientificName.x)
 ```
+
 
 
 ## 2. BISH- Data Cleanup
@@ -333,9 +337,12 @@ write.csv(temp, file = "PTBGtaxa_Not_in_POH_table_12102020.csv", row.names = FAL
 
 Second merge to assign an accepted scientific name
 ```{r}
-PTBG <- merge(POH_taxon_2, PTBG, by = "acceptedNameUsageID", all.x = FALSE, all.y = TRUE) %>% dplyr::rename(scientificName = scientificName.x)
+PTBG <- merge(POH_taxon_2, PTBG, by = "acceptedNameUsageID", all.x = FALSE, all.y = FALSE) %>% dplyr::rename(scientificName = scientificName.x)
 ```
 
+```{r}
+subset(PTBG, is.na(PTBG$TaxonID))
+```
 
 
 ## 2. PTBG- Data Cleanup
@@ -382,8 +389,12 @@ GBIF_pres_spec<- merge(POH_taxon_1, GBIF_pres_spec,  by.x = "scientificName", by
 
 Second merge to assign an accepted scientific name
 ```{r}
-GBIF_pres_spec <- merge(POH_taxon_2, GBIF_pres_spec, by = "acceptedNameUsageID", all.x = FALSE, all.y = TRUE) %>% dplyr::rename(scientificName = scientificName.x, Year = year)
+GBIF_pres_spec <- merge(POH_taxon_2, GBIF_pres_spec, by = "acceptedNameUsageID", all.x = FALSE, all.y = FALSE) %>% dplyr::rename(scientificName = scientificName.x, Year = year)
 ```
+```{r}
+GBIF_pres_spec
+```
+
 
 
 ## 2. GBIF- Data Cleanup
@@ -426,7 +437,7 @@ write.csv(temp, file = "UStaxa_Not_in_POH_table_12102020.csv", row.names = FALSE
 ```
 
 ```{r}
-US <- merge(POH_taxon_2, US, by = "acceptedNameUsageID", all.x = FALSE, all.y = TRUE) %>% dplyr::rename(scientificName = scientificName.x)
+US <- merge(POH_taxon_2, US, by = "acceptedNameUsageID", all.x = FALSE, all.y = FALSE) %>% dplyr::rename(scientificName = scientificName.x)
 ```
 
 ```{r}
@@ -478,7 +489,7 @@ idigbio<- merge(POH_taxon_1, idigbio,  by.x = "scientificName", by.y = "dwc.scie
 
 Second merge to assign an accepted scientific name
 ```{r}
-idigbio <- merge(POH_taxon_2, idigbio, by = "acceptedNameUsageID", all.x = FALSE, all.y = TRUE) %>% dplyr::rename(scientificName = scientificName.x)
+idigbio <- merge(POH_taxon_2, idigbio, by = "acceptedNameUsageID", all.x = FALSE, all.y = FALSE) %>% dplyr::rename(scientificName = scientificName.x)
 ```
 ```{r}
 idigbio <- subset(idigbio, !is.na(idigbio$scientificName))
@@ -986,7 +997,7 @@ length(unique(finalDF$Dup_Group))
 ```
 
 
-making a unique location ID
+## making a unique location ID
 ```{r}
 first <- random_id(n = length(unique(finalDF$Dup_Group)), bytes = 8, use_openssl = TRUE)
 second <- random_id(n = length(unique(finalDF$Dup_Group)), bytes = 4, use_openssl = TRUE)
@@ -1088,5 +1099,26 @@ write.csv(LocationDF, file= "Location_COMPILED_2021-06-29.csv", row.names = FALS
 write.csv(forPOH, file= "herb_forPOH_2021-06-29.csv", row.names = FALSE)
 ```
 
+Just doing some checks because it appears that excel is reading the data strangely
 
+
+
+```{r}
+head(sort(unique((finalDF$taxonID))))
+```
+```{r}
+head(sort(unique((finalDF$occurrenceID))))
+```
+```{r}
+taxonIDissue <- subset(finalDF, is.na(finalDF$taxonID))
+taxonIDissue
+```
+```{r}
+OccIDissue <- subset(finalDF, is.na(finalDF$occurrenceID))
+OccIDissue
+```
+
+```{r}
+length(unique(taxonIDissue$acceptedNameUsageID))
+```
 
