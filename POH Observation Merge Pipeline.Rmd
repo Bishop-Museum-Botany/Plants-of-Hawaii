@@ -41,13 +41,14 @@ POH_taxon_2 <- read.csv("POH_TAXA_12_17_2020.csv", header=T, sep=',', stringsAsF
 POH_taxon_2 <- subset(POH_taxon_2, POH_taxon_2$acceptedNameUsageID != "")
 POH_taxon_2 <- subset(POH_taxon_2, !is.na(POH_taxon_2$acceptedNameUsageID))
 
+
 POH_taxon_1 <-  POH_taxon_2 %>% dplyr::select(acceptedNameUsageID, scientificName, BISH_TaxonID, taxonID)
 POH_taxon_2 <- subset(POH_taxon_2, POH_taxon_2$acceptedNameUsageID == POH_taxon_2$taxonID)
 ```
 ```{r}
-#Herbarium Data                                                                                                         
+#Occurrence Data                                                                                                         
 POHImages <- read.csv("POH_Images.csv", header=T, sep=',', stringsAsFactors=F)
-GBIF <- read.csv("occurrence.csv", header=T, sep=',', stringsAsFactors=F) %>% dplyr::rename(TaxonomicName = scientificName) %>% dplyr::select(-c(acceptedNameUsageID,	taxonID, kingdom,	phylum,	class,	order,	family,	genus, vernacularName))
+GBIF <- read.csv("occurrence.csv", header=T, sep=',', stringsAsFactors=F) %>% dplyr::rename(TaxonomicName = scientificName) %>% dplyr::select(-c(acceptedNameUsageID, taxonID, kingdom,	phylum,	class,	order,	family,	genus, vernacularName))
   ## subset to remove human occurrences (we'll deal with those later)
   GBIF_obs <- subset(GBIF, GBIF$basisOfRecord != "PRESERVED_SPECIMEN")
 ```
@@ -55,6 +56,7 @@ GBIF <- read.csv("occurrence.csv", header=T, sep=',', stringsAsFactors=F) %>% dp
 #This polygon is only for the main hawaiian islands - we should build another that includes the NW islands
 islandpolys <- st_read("Coastline.shp")
 ```
+
 
 # GBIF Observation Data
 ## 1. GBIF- Merge with POH table
@@ -65,23 +67,32 @@ Get rid of authornames that are embedded in the taxon name
 ```{r}
 GBIF_obs$scientificName_clean <- unlist(lapply(GBIF_obs$TaxonomicName, remove.authors))
 ```
+
+okay so far
+
 ```{r}
-temp <- merge(POH_taxon_1, GBIF_obs,  by.x = "scientificName", by.y = "scientificName_clean", all.x = FALSE, all.y = TRUE)
-temp <- subset(temp, is.na(temp$acceptedNameUsageID))
-occ <- nrow(temp)
-tax <- length(unique(temp$scientificName))
+#finding a match in the BISH taxon table
+temp1 <- merge(POH_taxon_1, GBIF_obs,  by.x = "scientificName", by.y = "scientificName_clean", all.x = FALSE, all.y = TRUE)
+temp2 <- subset(temp1, is.na(temp1$acceptedNameUsageID))
+occ <- nrow(temp2)
+tax <- length(unique(temp2$scientificName))
 # but still want to export mismatches
-write.csv(temp, file = "GBIFOBStaxa_Not_in_POH_table_01262021.csv", row.names = FALSE)
+write.csv(temp2, file = "GBIFOBStaxa_Not_in_POH_table_01262021.csv", row.names = FALSE)
 print(paste0("lost ", occ , " occurrences represented by ", tax, " unique values in the taxa names field"))
 ```
+
+
+finding a match in the BISH taxon table
 ```{r}
-GBIF_obs<- merge(POH_taxon_1, GBIF_obs,  by.x = "scientificName", by.y = "scientificName_clean", all.x = FALSE, all.y = FALSE)
+GBIF_obs1<- merge(POH_taxon_1, GBIF_obs,  by.x = "scientificName", by.y = "scientificName_clean", all.x = FALSE, all.y = FALSE)
 ```
+
 
 Second merge to assign an accepted scientific name
 ```{r}
-GBIF_obs <- merge(POH_taxon_2, GBIF_obs, by = "acceptedNameUsageID", all.x = FALSE, all.y = TRUE) %>% dplyr::rename(scientificName = scientificName.x, Year = year)
+GBIF_obs2 <- merge(POH_taxon_2, GBIF_obs1, by = "acceptedNameUsageID", all.x = FALSE, all.y = FALSE) %>% dplyr::rename(scientificName = scientificName.x, taxonID = taxonID.x, Year = year)
 ```
+
 
 
 ## 2. GBIF- Data Cleanup
@@ -90,7 +101,7 @@ none
 ## 3. GBIF- Standardize column names and select the ones we want
 ```{r}
 # new_name = old_name
-GBIF_obs <- GBIF_obs %>% 
+GBIF_obs <- GBIF_obs2 %>% 
   dplyr::rename(publisher_temp = publisher, source_temp = source) %>% 
   dplyr::rename(source = publisher_temp) %>% 
   dplyr::select(dplyr::any_of(Allfields))
@@ -99,15 +110,13 @@ GBIF_obs <- GBIF_obs %>%
 nrow(GBIF_obs)
 ```
 
+
+
 # POH Images
 ## 1. POH Images- Merge with POH table
 
-
 ```{r}
-POHImages
-```
-```{r}
-POH_taxon_1
+sort(colnames(POHImages))
 ```
 
 
@@ -121,15 +130,23 @@ write.csv(temp, file = "POHIMagestaxa_Not_in_POH_table_01262021.csv", row.names 
 print(paste0("lost ", occ , " occurrences represented by ", tax, " unique values in the taxa names field"))
 ```
 ```{r}
-POHImages<- merge(POH_taxon_1, POHImages,  by = "taxonID", all.x = FALSE, all.y = FALSE)
-nrow(POHImages)
+POHImages2<- merge(POH_taxon_1, POHImages,  by = "taxonID", all.x = FALSE, all.y = FALSE)
+nrow(POHImages2)
 ```
+```{r}
+sort(colnames(POHImages2))
+```
+
 
 Second merge to assign an accepted scientific name
 ```{r}
-POHImages <- merge(POH_taxon_2, POHImages, by = "acceptedNameUsageID", all.x = FALSE, all.y = TRUE) %>% dplyr::rename(scientificName = scientificName.x)
-nrow(POHImages)
+POHImages3 <- merge(POH_taxon_2, POHImages2, by = "acceptedNameUsageID", all.x = FALSE, all.y = FALSE) %>% dplyr::rename(scientificName = scientificName.x, taxonID = taxonID.x)
+nrow(POHImages3)
 ```
+```{r}
+sort(colnames(POHImages3))
+```
+
 
 ## 2. POH Images- Data Cleanup
 none
@@ -138,31 +155,50 @@ none
 ## 3. POH Images- Standardize column names and select the ones we want
 ```{r}
 # new_name = old_name
-POHImages <- POHImages %>% 
+POHImages <- POHImages3 %>% 
   dplyr::rename(source = Source, eventDate = Date_Taken, isCultivated = Cultivated, island = Island, localty = Locality, decimalLatitude = Latitude, decimalLongitude = Longitude, occurrenceREmarks = COMMENTS) %>% 
   dplyr::select(dplyr::any_of(Allfields))
 ```
 
 
+
+```{r}
+subset(GBIF_obs, is.na(GBIF_obs$taxonID))
+```
+```{r}
+subset(POHImages, is.na(POHImages$taxonID))
+```
+
 ## 4. Collate obsetrvation data into a single dataframe
 
  Create empty dataframe with these columns
 ```{r}
-combinedDF <-  setNames(data.frame(matrix(ncol = length(Allfields), nrow = 0)), Allfields)
+combinedDF <-  mutate_all(setNames(data.frame(matrix(ncol = length(Allfields), nrow = 0)), Allfields), as.character)
 ```
 
-Combine
+
+
+
 
 ```{r}
-combinedDF <- dplyr::bind_rows(mutate_all(combinedDF, as.character), mutate_all(GBIF_obs, as.character), mutate_all(POHImages, as.character))
+GBIF_obs_mutate <- mutate_all(GBIF_obs, as.character)
+```
+```{r}
+POHImages_mutate <- mutate_all(POHImages, as.character)
+```
+Combine
+
+
+```{r}
+combinedDF <- dplyr::bind_rows(combinedDF,GBIF_obs_mutate, POHImages_mutate )
 ```
 ```{r}
 nrow(combinedDF)
 ```
-
 ```{r}
-combinedDF
+nrow(GBIF_obs) + nrow(POHImages)
 ```
+
 
 ## 5. Remove Duplicates
 Removes obvious duplicates, BISH should be kept because it's the first in the dataframe
@@ -280,7 +316,12 @@ finalDF <- merge(finalDF, temp, by = "UUID", all.x = TRUE, all.y = FALSE)
 nrow(finalDF)
 ```
 
-making a unique location ID
+## making a unique location ID
+
+```{r}
+finalDF <- finalDF %>% dplyr:: select(-c(occurrenceID, locationID))
+```
+
 ```{r}
 first <- random_id(n = nrow(finalDF), bytes = 8, use_openssl = TRUE)
 second <- random_id(n = nrow(finalDF), bytes = 4, use_openssl = TRUE)
@@ -303,6 +344,7 @@ finalDF
 
 
 ##### occurrence ID making... 
+
 
 ```{r}
 first <- random_id(n = nrow(finalDF), bytes = 8, use_openssl = TRUE)
@@ -337,6 +379,10 @@ observation <- grepl.sub(data = finalDF, pattern = "Invasive Species Committee",
 ```{r}
 nrow(survey) + nrow(observation) == nrow(finalDF)
 ```
+```{r}
+nrow(observation)
+```
+
 ```{r}
 observation <- subset(observation, source != "BPBM")
 nrow(observation)
@@ -404,6 +450,5 @@ Obs <- forPOH
 Occ <- rbind(Herb, Obs)
 ```
 ```{r}
-write.csv(Occ, file= "All_Occurrences_forPOH_2021-06-29.csv", row.names = FALSE)
+write.csv(Occ, file= "All_Occurrences_forPOH_2021-07-06.csv", row.names = FALSE)
 ```
-
